@@ -3,6 +3,9 @@
   "name": "Chrome Extension",
   "version": "1.0.0",
   "description": "A basic Chrome extension",
+  "permissions": [
+    "storage"
+  ],
   "action": {
     "default_popup": "popup.html"
   },

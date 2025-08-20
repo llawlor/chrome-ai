@@ -165,8 +165,8 @@ document.addEventListener('DOMContentLoaded', function() {
       <div class="log-content">${content}</div>
     `; // set log entry html
 
-    logsContainer.appendChild(logEntry); // add log entry to container
-    logsContainer.scrollTop = logsContainer.scrollHeight; // scroll to bottom
+    logsContent.appendChild(logEntry); // add log entry to container
+    logsContent.scrollTop = logsContent.scrollHeight; // scroll to bottom
 
     // save log to persistent storage
     saveLogToPersistentStorage(type, content, timestamp); // persist log
@@ -565,11 +565,11 @@ when selectors fail or you're unsure about page structure, use analyze_page to g
           <div class="log-content">${log.content}</div>
         `; // set log entry html
 
-        logsContainer.appendChild(logEntry); // add log entry to container
+        logsContent.appendChild(logEntry); // add log entry to container
       });
-
+      
       if (logs.length > 0) {
-        logsContainer.scrollTop = logsContainer.scrollHeight; // scroll to bottom
+        logsContent.scrollTop = logsContent.scrollHeight; // scroll to bottom
       }
 
     } catch (error) {
@@ -585,7 +585,7 @@ when selectors fail or you're unsure about page structure, use analyze_page to g
       });
 
       // clear logs from ui
-      logsContainer.innerHTML = ''; // clear container
+      logsContent.innerHTML = ''; // clear container
 
     } catch (error) {
       console.error('failed to clear persistent logs:', error); // log error

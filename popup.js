@@ -268,6 +268,8 @@ when selectors fail or you're unsure about page structure, use analyze_page to g
       });
 
       if (!response.ok) { // check if request failed
+        const errorText = await response.text(); // get error details
+        addLog('error', `openai api error ${response.status}: ${errorText}`); // log detailed error
         throw new Error(`openai api error: ${response.status}`); // throw error
       }
 

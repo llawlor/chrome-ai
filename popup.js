@@ -77,6 +77,7 @@ document.addEventListener('DOMContentLoaded', function() {
       if (chrome.runtime.lastError) { // check for storage errors
         console.error('error loading api key:', chrome.runtime.lastError); // log error
         updateApiKeyStatus(false); // update status display
+        updateMainInterface(false); // hide main interface
       } else if (result.openai_api_key) { // check if api key exists
         updateApiKeyStatus(true); // update status display
         updateMainInterface(true); // show main interface

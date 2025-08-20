@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "AI Prime",
   "version": "1.0.0",
-  "description": "A basic Chrome extension",
+  "description": "AI-powered browsing assistant that automates web navigation and tasks using natural language instructions",
   "permissions": [
     "storage",
     "tabs",

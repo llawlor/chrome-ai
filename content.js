@@ -41,36 +41,61 @@ async function executeAction(action) {
   }
 }
 
-async function clickElement(selector) {
-  const element = document.querySelector(selector); // find element by selector
-  if (!element) { // check if element exists
-    throw new Error(`element not found: ${selector}`); // throw error
+async function clickElement(selector, expectedOutcome) {
+  // try multiple selector strategies if selector is an array
+  const selectors = Array.isArray(selector) ? selector : [selector]; // ensure array
+  const result = findElementWithStrategies(selectors); // find element with strategies
+  
+  if (!result) { // check if no element found
+    throw new Error(`element not found with any selector: ${selectors.join(', ')}`); // throw error
+  }
+  
+  const { element, selector: successfulSelector } = result; // destructure result
+  
+  if (!isElementInteractable(element)) { // check if element is interactable
+    throw new Error(`element not interactable: ${successfulSelector}`); // throw error
   }
   
   element.scrollIntoView({behavior: 'smooth', block: 'center'}); // scroll element into view
   await new Promise(resolve => setTimeout(resolve, 500)); // wait for scroll
   
-  element.click(); // click the element
-  return `clicked element: ${selector}`; // return success message
+  element.click(); // click element
+  
+  // wait briefly for action to take effect
+  await new Promise(resolve => setTimeout(resolve, 200)); // wait 200ms
+  
+  // verify action success
+  const success = verifyActionSuccess({ type: 'click' }, element, expectedOutcome); // verify success
+  
+  return `clicked element: ${successfulSelector}${success ? ' (verified)' : ' (unverified)'}`; // return success message
 }
 
-async function typeText(selector, text) {
-  const element = document.querySelector(selector); // find element by selector
-  if (!element) { // check if element exists
-    throw new Error(`element not found: ${selector}`); // throw error
+async function typeText(selector, text, expectedOutcome) {
+  // try multiple selector strategies if selector is an array
+  const selectors = Array.isArray(selector) ? selector : [selector]; // ensure array
+  const result = findElementWithStrategies(selectors); // find element with strategies
+  
+  if (!result) { // check if no element found
+    throw new Error(`element not found with any selector: ${selectors.join(', ')}`); // throw error
   }
   
-  element.scrollIntoView({behavior: 'smooth', block: 'center'}); // scroll element into view
-  await new Promise(resolve => setTimeout(resolve, 500)); // wait for scroll
+  const { element, selector: successfulSelector } = result; // destructure result
   
-  element.focus(); // focus on element
+  if (!isElementInteractable(element)) { // check if element is interactable
+    throw new Error(`element not interactable: ${successfulSelector}`); // throw error
+  }
+  
+  element.focus(); // focus element
   element.value = text; // set element value
   
-  // trigger input events
-  element.dispatchEvent(new Event('input', {bubbles: true})); // dispatch input event
-  element.dispatchEvent(new Event('change', {bubbles: true})); // dispatch change event
+  // dispatch input event to trigger any listeners
+  const inputEvent = new Event('input', { bubbles: true }); // create input event
+  element.dispatchEvent(inputEvent); // dispatch input event
   
-  return `typed text into ${selector}: ${text}`; // return success message
+  // verify action success
+  const success = verifyActionSuccess({ type: 'type', text }, element, expectedOutcome); // verify success
+  
+  return `typed text into ${successfulSelector}: ${text}${success ? ' (verified)' : ' (unverified)'}`; // return success message
 }
 
 async function scrollPage(direction) {
@@ -120,10 +145,19 @@ async function submitForm(selector) {
   }
 }
 
-async function pressKey(selector, key) {
-  const element = document.querySelector(selector); // find element by selector
-  if (!element) { // check if element not found
-    throw new Error(`element not found: ${selector}`); // throw error
+async function pressKey(selector, key, expectedOutcome) {
+  // try multiple selector strategies if selector is an array
+  const selectors = Array.isArray(selector) ? selector : [selector]; // ensure array
+  const result = findElementWithStrategies(selectors); // find element with strategies
+  
+  if (!result) { // check if no element found
+    throw new Error(`element not found with any selector: ${selectors.join(', ')}`); // throw error
+  }
+  
+  const { element, selector: successfulSelector } = result; // destructure result
+  
+  if (!isElementInteractable(element)) { // check if element is interactable
+    throw new Error(`element not interactable: ${successfulSelector}`); // throw error
   }
   
   if (key === 'Enter') { // check if enter key
@@ -165,14 +199,24 @@ async function pressKey(selector, key) {
     const form = element.closest('form'); // find parent form
     if (form) { // check if form found
       form.submit(); // submit form
-      return `pressed Enter and submitted form for element: ${selector}`; // return success message
+      
+      // wait and check for form submission confirmation
+      await new Promise(resolve => setTimeout(resolve, 1000)); // wait for submission
+      const submitted = detectFormSubmission(); // check if submitted
+      
+      return `pressed Enter and submitted form for element: ${successfulSelector}${submitted ? ' (confirmed)' : ' (unconfirmed)'}`; // return success message
     }
     
     // strategy 3: try clicking submit button
     const submitBtn = form ? form.querySelector('input[type="submit"], button[type="submit"], button:not([type])') : null; // find submit button
     if (submitBtn) { // check if submit button found
       submitBtn.click(); // click submit button
-      return `pressed Enter and clicked submit button for element: ${selector}`; // return success message
+      
+      // wait and check for form submission confirmation
+      await new Promise(resolve => setTimeout(resolve, 1000)); // wait for submission
+      const submitted = detectFormSubmission(); // check if submitted
+      
+      return `pressed Enter and clicked submit button for element: ${successfulSelector}${submitted ? ' (confirmed)' : ' (unconfirmed)'}`; // return success message
     }
     
   } else {
@@ -205,7 +249,14 @@ async function pressKey(selector, key) {
     element.dispatchEvent(keyupEvent); // dispatch keyup event
   }
   
-  return `pressed ${key} on element: ${selector}`; // return success message
+  // verify action success for enter key
+  if (key === 'Enter') { // check if enter key
+    await new Promise(resolve => setTimeout(resolve, 1000)); // wait for potential submission
+    const success = verifyActionSuccess({ type: 'press_key', key }, element, expectedOutcome); // verify success
+    return `pressed ${key} on element: ${successfulSelector}${success ? ' (verified)' : ' (unverified)'}`; // return success message
+  }
+  
+  return `pressed ${key} on element: ${successfulSelector}`; // return success message
 }
 
 async function analyzePage(focus, question) {
@@ -248,11 +299,10 @@ async function analyzePage(focus, question) {
         htmlContent += `Button ${i + 1}: ${button.outerHTML}\n`; // add button html
       }
     });
-  } else if (focus.toLowerCase().includes('filter') || focus.toLowerCase().includes('prime')) { // check if analyzing filters
+  } else if (focus.toLowerCase().includes('filter')) { // check if analyzing filters
     // find filter-related elements
     const filterElements = document.querySelectorAll('[data-component-type="s-refinement"], .s-refinement, .a-checkbox, input[type="checkbox"], .facet, .filter'); // find filter elements
     const sidebarElements = document.querySelectorAll('#leftNav, .s-refinements, .s-size-base-plus, [data-cy="refinements"]'); // find sidebar elements
-    const primeElements = document.querySelectorAll('[data-value*="prime" i], [aria-label*="prime" i], [title*="prime" i], .prime, #prime'); // find prime-specific elements
     const checkboxes = document.querySelectorAll('input[type="checkbox"], .a-checkbox'); // find all checkboxes
     
     htmlContent += 'FILTER ELEMENTS:\n'; // add filter elements header
@@ -266,13 +316,6 @@ async function analyzePage(focus, question) {
     sidebarElements.forEach((element, i) => {
       if (i < 5) { // limit to first 5 sidebar elements
         htmlContent += `Sidebar ${i + 1}: ${element.outerHTML.substring(0, 1000)}\n\n`; // add sidebar element html
-      }
-    });
-    
-    htmlContent += 'PRIME ELEMENTS:\n'; // add prime elements header
-    primeElements.forEach((element, i) => {
-      if (i < 10) { // limit to first 10 prime elements
-        htmlContent += `Prime ${i + 1}: ${element.outerHTML}\n`; // add prime element html
       }
     });
     
@@ -321,6 +364,119 @@ async function analyzePage(focus, question) {
   }
   
   return `page analysis requested: ${question}\n\nHTML STRUCTURE:\n${htmlContent}`; // return analysis
+}
+
+async function waitForPageLoad() {
+  // wait for page to be fully loaded
+  return new Promise((resolve) => {
+    if (document.readyState === 'complete') { // check if already loaded
+      resolve('page already loaded'); // resolve immediately
+    } else {
+      const checkLoad = () => {
+        if (document.readyState === 'complete') { // check if loaded
+          resolve('page loaded'); // resolve when loaded
+        } else {
+          setTimeout(checkLoad, 100); // check again in 100ms
+        }
+      };
+      checkLoad(); // start checking
+    }
+  });
+}
+
+function isElementVisible(element) {
+  // check if element is visible and interactable
+  if (!element) return false; // element doesn't exist
+  
+  const rect = element.getBoundingClientRect(); // get element position
+  const style = window.getComputedStyle(element); // get computed styles
+  
+  return (
+    rect.width > 0 && // has width
+    rect.height > 0 && // has height
+    style.visibility !== 'hidden' && // not hidden
+    style.display !== 'none' && // not display none
+    style.opacity !== '0' && // not transparent
+    rect.top >= 0 && // visible in viewport
+    rect.left >= 0 &&
+    rect.bottom <= window.innerHeight &&
+    rect.right <= window.innerWidth
+  );
+}
+
+function isElementInteractable(element) {
+  // check if element can be interacted with
+  if (!isElementVisible(element)) return false; // must be visible first
+  
+  const style = window.getComputedStyle(element); // get computed styles
+  return (
+    !element.disabled && // not disabled
+    style.pointerEvents !== 'none' && // can receive pointer events
+    !element.hasAttribute('readonly') // not readonly
+  );
+}
+
+function findElementWithStrategies(selectors) {
+  // try multiple selector strategies
+  for (const selector of selectors) { // loop through selectors
+    try {
+      const element = document.querySelector(selector); // try selector
+      if (element && isElementVisible(element)) { // check if found and visible
+        return { element, selector }; // return element and successful selector
+      }
+    } catch (e) {
+      continue; // try next selector if this one fails
+    }
+  }
+  return null; // no selector worked
+}
+
+function verifyActionSuccess(action, element, expectedOutcome) {
+  // verify that action had expected effect
+  switch (action.type) {
+    case 'click':
+      // check if click triggered expected changes
+      if (expectedOutcome && expectedOutcome.urlChange) { // check for url change
+        return window.location.href.includes(expectedOutcome.urlChange); // verify url changed
+      }
+      if (expectedOutcome && expectedOutcome.elementChange) { // check for element change
+        const changedElement = document.querySelector(expectedOutcome.elementChange); // find changed element
+        return changedElement !== null; // verify element exists
+      }
+      return true; // assume success if no specific outcome expected
+      
+    case 'type':
+      // verify text was entered
+      return element.value === action.text || element.textContent === action.text; // check value matches
+      
+    case 'submit':
+    case 'press_key':
+      // check for form submission indicators
+      return detectFormSubmission(); // use form submission detection
+      
+    default:
+      return true; // assume success for other actions
+  }
+}
+
+function detectFormSubmission() {
+  // detect if form was successfully submitted
+  const indicators = [
+    () => window.location.href !== window.location.href, // url changed (will be false initially)
+    () => document.querySelector('.loading, .spinner, [aria-busy="true"]') !== null, // loading indicator
+    () => document.querySelector('.success, .confirmation, .thank-you') !== null, // success message
+    () => document.querySelector('.error, .validation-error') !== null, // error message (still indicates submission attempt)
+    () => document.title !== document.title // title changed (will be false initially)
+  ];
+  
+  // check for immediate indicators
+  return indicators.some(check => {
+    try {
+      return check(); // run check
+    } catch (e) {
+      return false; // ignore errors
+    }
+  });
 }
 
 async function waitSeconds(seconds) {

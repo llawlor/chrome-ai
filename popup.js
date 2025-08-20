@@ -36,9 +36,8 @@ document.addEventListener('DOMContentLoaded', function() {
   });
 
   // clear logs when button is clicked
-  clearLogsBtn.addEventListener('click', function() {
-    logsContent.innerHTML = ''; // clear logs content
-    addLog('system', 'logs cleared'); // add system log
+  clearLogsBtn.addEventListener('click', async function() {
+    await clearPersistentLogs(); // clear persistent logs
   });
 
   // handle pause/resume button
@@ -112,9 +111,9 @@ document.addEventListener('DOMContentLoaded', function() {
     });
   });
 
-  function loadApiKey() {
+  async function loadApiKey() {
     // load api key from chrome storage
-    chrome.storage.local.get(['openai_api_key'], function(result) {
+    chrome.storage.local.get(['openai_api_key'], async function(result) {
       if (chrome.runtime.lastError) { // check for storage errors
         console.error('error loading api key:', chrome.runtime.lastError); // log error
         updateApiKeyStatus(false); // update status display
@@ -126,6 +125,9 @@ document.addEventListener('DOMContentLoaded', function() {
         updateApiKeyStatus(false); // update status display
         updateMainInterface(false); // hide main interface
       }
+      
+      // load persistent logs when popup opens
+      await loadPersistentLogs(); // load saved logs
     });
   }
 
@@ -161,10 +163,13 @@ document.addEventListener('DOMContentLoaded', function() {
     logEntry.innerHTML = `
       <div class="log-timestamp">[${timestamp}] ${type.toUpperCase()}</div>
       <div class="log-content">${content}</div>
-    `; // set log entry content
+    `; // set log entry html
     
-    logsContent.appendChild(logEntry); // add log entry to logs content
+    logsContainer.appendChild(logEntry); // add log entry to container
     logsContainer.scrollTop = logsContainer.scrollHeight; // scroll to bottom
+    
+    // save log to persistent storage
+    saveLogToPersistentStorage(type, content, timestamp); // persist log
   }
 
   function showTaskStatus(message, type) {
@@ -506,6 +511,84 @@ when selectors fail or you're unsure about page structure, use analyze_page to g
       console.error('selector guidance error:', error); // log error
       addLog('error', `selector guidance failed: ${error.message}`); // log error
       return null;
+    }
+  }
+
+  async function saveLogToPersistentStorage(type, content, timestamp) {
+    try {
+      // get existing logs from storage
+      const result = await new Promise((resolve) => {
+        chrome.storage.local.get(['persistent_logs'], resolve);
+      });
+      
+      const logs = result.persistent_logs || []; // get existing logs or empty array
+      
+      // add new log entry
+      logs.push({
+        type: type,
+        content: content,
+        timestamp: timestamp,
+        fullTimestamp: new Date().toISOString()
+      }); // add log entry
+      
+      // keep only last 1000 log entries to prevent storage overflow
+      if (logs.length > 1000) {
+        logs.splice(0, logs.length - 1000); // remove oldest entries
+      }
+      
+      // save updated logs to storage
+      await new Promise((resolve) => {
+        chrome.storage.local.set({persistent_logs: logs}, resolve);
+      });
+      
+    } catch (error) {
+      console.error('failed to save log to persistent storage:', error); // log error
+    }
+  }
+
+  async function loadPersistentLogs() {
+    try {
+      // get logs from storage
+      const result = await new Promise((resolve) => {
+        chrome.storage.local.get(['persistent_logs'], resolve);
+      });
+      
+      const logs = result.persistent_logs || []; // get logs or empty array
+      
+      // display logs in ui
+      logs.forEach(log => {
+        const logEntry = document.createElement('div'); // create log entry element
+        logEntry.className = `log-entry ${log.type}`; // set log entry class
+        
+        logEntry.innerHTML = `
+          <div class="log-timestamp">[${log.timestamp}] ${log.type.toUpperCase()}</div>
+          <div class="log-content">${log.content}</div>
+        `; // set log entry html
+        
+        logsContainer.appendChild(logEntry); // add log entry to container
+      });
+      
+      if (logs.length > 0) {
+        logsContainer.scrollTop = logsContainer.scrollHeight; // scroll to bottom
+      }
+      
+    } catch (error) {
+      console.error('failed to load persistent logs:', error); // log error
+    }
+  }
+
+  async function clearPersistentLogs() {
+    try {
+      // clear logs from storage
+      await new Promise((resolve) => {
+        chrome.storage.local.set({persistent_logs: []}, resolve);
+      });
+      
+      // clear logs from ui
+      logsContainer.innerHTML = ''; // clear container
+      
+    } catch (error) {
+      console.error('failed to clear persistent logs:', error); // log error
     }
   }
 

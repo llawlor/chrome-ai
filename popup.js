@@ -253,7 +253,7 @@ when selectors fail or you're unsure about page structure, use analyze_page to g
           }
         ],
         temperature: 0.7,
-        max_tokens: 1000
+        max_completion_tokens: 1000
       }; // create request body
 
       addLog('request', `openai request: ${JSON.stringify(requestBody, null, 2)}`); // log openai request
@@ -484,7 +484,7 @@ when selectors fail or you're unsure about page structure, use analyze_page to g
           }
         ],
         temperature: 0.1,
-        max_tokens: 50
+        max_completion_tokens: 50
       }; // create guidance request
 
       addLog('request', `openai guidance request: ${JSON.stringify(guidanceRequest, null, 2)}`); // log guidance request

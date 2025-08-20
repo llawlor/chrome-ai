@@ -15,6 +15,11 @@ document.addEventListener('DOMContentLoaded', function() {
   const logsContainer = document.getElementById('logsContainer'); // get logs container element
   const logsContent = document.getElementById('logsContent'); // get logs content element
   const clearLogsBtn = document.getElementById('clearLogs'); // get clear logs button element
+  const pauseBtn = document.getElementById('pauseExecution'); // get pause button element
+
+  let isPaused = false; // track pause state
+  let currentActions = []; // store current actions for resume
+  let currentActionIndex = 0; // track current action index
 
   // load existing api key on popup open
   loadApiKey();
@@ -34,6 +39,25 @@ document.addEventListener('DOMContentLoaded', function() {
   clearLogsBtn.addEventListener('click', function() {
     logsContent.innerHTML = ''; // clear logs content
     addLog('system', 'logs cleared'); // add system log
+  });
+
+  // handle pause/resume button
+  pauseBtn.addEventListener('click', function() {
+    if (isPaused) { // check if currently paused
+      isPaused = false; // resume execution
+      pauseBtn.textContent = 'Pause Execution'; // update button text
+      pauseBtn.style.background = '#dc3545'; // reset button color
+      addLog('action', 'execution resumed'); // log resume
+      if (currentActions.length > 0) { // check if actions to resume
+        executeActionsFromIndex(currentActions, currentActionIndex); // resume from current index
+      }
+    } else {
+      isPaused = true; // pause execution
+      pauseBtn.textContent = 'Resume Execution'; // update button text
+      pauseBtn.style.background = '#28a745'; // change to green
+      addLog('action', 'execution paused'); // log pause
+      showTaskStatus('Execution paused by user', 'working'); // show pause status
+    }
   });
 
   // handle task submission
@@ -148,6 +172,10 @@ document.addEventListener('DOMContentLoaded', function() {
   async function executeTask(instruction) {
     try {
       submitBtn.disabled = true; // disable submit button
+      pauseBtn.classList.add('show'); // show pause button
+      isPaused = false; // reset pause state
+      pauseBtn.textContent = 'Pause Execution'; // reset button text
+      pauseBtn.style.background = '#dc3545'; // reset button color
       showTaskStatus('Processing your request...', 'working'); // show working status
       addLog('request', `user instruction: ${instruction}`); // log user instruction
       
@@ -252,6 +280,8 @@ example for amazon search:
       }
 
       // execute actions via content script
+      currentActions = actions; // store actions for pause/resume
+      currentActionIndex = 0; // reset action index
       await executeActions(actions); // execute the actions
 
     } catch (error) {
@@ -261,13 +291,25 @@ example for amazon search:
       addLog('error', errorMsg); // log error
     } finally {
       submitBtn.disabled = false; // re-enable submit button
+      pauseBtn.classList.remove('show'); // hide pause button
     }
   }
 
   async function executeActions(actions) {
-    for (const action of actions) { // iterate through actions
+    return await executeActionsFromIndex(actions, 0); // start from beginning
+  }
+
+  async function executeActionsFromIndex(actions, startIndex) {
+    for (let i = startIndex; i < actions.length; i++) { // iterate through actions from start index
+      if (isPaused) { // check if execution is paused
+        currentActionIndex = i; // save current index for resume
+        addLog('action', `execution paused at action ${i + 1} of ${actions.length}`); // log pause
+        return; // exit function
+      }
+
+      const action = actions[i]; // get current action
       try {
-        addLog('action', `executing: ${JSON.stringify(action)}`); // log action execution
+        addLog('action', `executing (${i + 1}/${actions.length}): ${JSON.stringify(action)}`); // log action execution with progress
         // send action to content script
         const [tab] = await chrome.tabs.query({active: true, currentWindow: true});
         

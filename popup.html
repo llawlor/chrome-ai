@@ -133,6 +133,21 @@
       width: 100%;
     }
     
+    .pause-btn {
+      margin-top: 10px;
+      width: 100%;
+      background: #dc3545;
+      display: none;
+    }
+    
+    .pause-btn:hover {
+      background: #c82333;
+    }
+    
+    .pause-btn.show {
+      display: block;
+    }
+    
     .task-status {
       margin-top: 15px;
       padding: 10px;
@@ -258,6 +273,7 @@
       <label for="instructionInput">What would you like me to do?</label>
       <textarea id="instructionInput" class="instruction-input" placeholder="Tell me what you'd like me to do on this website or any other site. For example: 'Go to Amazon and find the best rated wireless headphones under $100' or 'Navigate to GitHub and find trending JavaScript repositories'"></textarea>
       <button id="submitInstruction" class="submit-btn">Execute Task</button>
+      <button id="pauseExecution" class="pause-btn">Pause Execution</button>
       <div id="taskStatus" class="task-status"></div>
     </div>
     

@@ -143,9 +143,13 @@ document.addEventListener('DOMContentLoaded', function() {
     if (show) { // check if should show main interface
       mainInterface.classList.remove('hidden'); // show main interface
       logsSection.classList.remove('hidden'); // show logs section
+      apiKeyLink.classList.remove('hidden'); // show api key link
+      apiKeySection.classList.add('hidden'); // hide api key section
     } else {
       mainInterface.classList.add('hidden'); // hide main interface
       logsSection.classList.add('hidden'); // hide logs section
+      apiKeyLink.classList.add('hidden'); // hide api key link
+      apiKeySection.classList.remove('hidden'); // show api key section for setup
     }
   }
 

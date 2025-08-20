@@ -353,7 +353,20 @@ when selectors fail or you're unsure about page structure, use analyze_page to g
         if (action.type === 'navigate') { // check if navigation action
           await chrome.tabs.update(tab.id, {url: action.url}); // navigate to url
           addLog('action', `navigated to: ${action.url}`); // log navigation
-          await new Promise(resolve => setTimeout(resolve, 1000)); // wait between actions
+          
+          // wait for page to load and reinject content script
+          await new Promise(resolve => setTimeout(resolve, 2000)); // wait for navigation
+          
+          try {
+            // reinject content script after navigation
+            await chrome.scripting.executeScript({
+              target: { tabId: tab.id },
+              files: ['content.js']
+            }); // reinject content script
+            addLog('system', 'content script reinjected after navigation'); // log reinjection
+          } catch (reinjectError) {
+            addLog('system', `content script reinject failed: ${reinjectError.message}`); // log reinject failure
+          }
         } else if (action.type === 'complete') { // check if completion action
           showTaskStatus(action.message, 'completed'); // show completion message
           addLog('action', `task completed: ${action.message}`); // log completion
@@ -367,24 +380,37 @@ when selectors fail or you're unsure about page structure, use analyze_page to g
           } else if (response && !response.success) { // check if analysis failed
             addLog('error', `page analysis failed: ${response.error}`); // log error
           }
-          await new Promise(resolve => setTimeout(resolve, 1000)); // wait between actions
-        } else {
-          // send other actions to content script
-          const response = await chrome.tabs.sendMessage(tab.id, {action: action}); // send message to content script
-          if (response && response.success) { // check if action succeeded
-            addLog('action', `success: ${response.result}`); // log success
-          } else if (response && !response.success) { // check if action failed
-            addLog('error', `action failed: ${response.error}`); // log error
-
-            // attempt automatic recovery with page analysis
-            const retryAction = await attemptActionRecovery(action, response.error); // try to recover
-            if (retryAction) { // check if recovery action available
-              addLog('action', 'attempting recovery with page analysis...'); // log recovery attempt
-              const retryResponse = await chrome.tabs.sendMessage(tab.id, {action: retryAction}); // retry with new action
-              if (retryResponse && retryResponse.success) { // check if retry succeeded
-                addLog('action', `recovery success: ${retryResponse.result}`); // log recovery success
+        } else { // check if other action type
+          // send message to content script with retry logic
+          let response;
+          let retryCount = 0;
+          const maxRetries = 3;
+          
+          while (retryCount < maxRetries) { // retry loop
+            try {
+              response = await chrome.tabs.sendMessage(tab.id, { action: action.type, ...action }); // send message
+              break; // success, exit retry loop
+            } catch (error) {
+              retryCount++; // increment retry count
+              if (error.message.includes('message channel') || error.message.includes('back/forward cache')) { // check for cache error
+                addLog('system', `message channel error, attempt ${retryCount}/${maxRetries}: ${error.message}`); // log error
+                
+                if (retryCount < maxRetries) { // check if more retries available
+                  // wait and try to reinject content script
+                  await new Promise(resolve => setTimeout(resolve, 1000)); // wait 1 second
+                  
+                  try {
+                    await chrome.scripting.executeScript({
+                      target: { tabId: tab.id },
+                      files: ['content.js']
+                    }); // reinject content script
+                    addLog('system', `content script reinjected on retry ${retryCount}`); // log reinjection
+                  } catch (reinjectError) {
+                    addLog('system', `reinject failed on retry ${retryCount}: ${reinjectError.message}`); // log reinject failure
+                  }
+                }
               } else {
-                addLog('error', `recovery failed: ${retryResponse ? retryResponse.error : 'no response'}`); // log recovery failure
+                throw error; // rethrow non-cache errors immediately
               }
             }
           }

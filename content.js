@@ -122,34 +122,88 @@ async function submitForm(selector) {
 
 async function pressKey(selector, key) {
   const element = document.querySelector(selector); // find element by selector
-  if (!element) { // check if element exists
+  if (!element) { // check if element not found
     throw new Error(`element not found: ${selector}`); // throw error
   }
   
-  element.scrollIntoView({behavior: 'smooth', block: 'center'}); // scroll element into view
-  await new Promise(resolve => setTimeout(resolve, 500)); // wait for scroll
-  
-  element.focus(); // focus on element
-  
-  // create and dispatch keydown event
-  const keydownEvent = new KeyboardEvent('keydown', {
-    key: key,
-    code: key === 'Enter' ? 'Enter' : key,
-    keyCode: key === 'Enter' ? 13 : key.charCodeAt(0),
-    which: key === 'Enter' ? 13 : key.charCodeAt(0),
-    bubbles: true
-  });
-  element.dispatchEvent(keydownEvent); // dispatch keydown event
-  
-  // create and dispatch keyup event
-  const keyupEvent = new KeyboardEvent('keyup', {
-    key: key,
-    code: key === 'Enter' ? 'Enter' : key,
-    keyCode: key === 'Enter' ? 13 : key.charCodeAt(0),
-    which: key === 'Enter' ? 13 : key.charCodeAt(0),
-    bubbles: true
-  });
-  element.dispatchEvent(keyupEvent); // dispatch keyup event
+  if (key === 'Enter') { // check if enter key
+    // try multiple submission strategies for enter key
+    
+    // strategy 1: dispatch keyboard events
+    const keydownEvent = new KeyboardEvent('keydown', {
+      key: 'Enter',
+      code: 'Enter',
+      keyCode: 13,
+      which: 13,
+      bubbles: true,
+      cancelable: true
+    });
+    element.dispatchEvent(keydownEvent); // dispatch keydown event
+    
+    const keypressEvent = new KeyboardEvent('keypress', {
+      key: 'Enter',
+      code: 'Enter',
+      keyCode: 13,
+      which: 13,
+      bubbles: true,
+      cancelable: true
+    });
+    element.dispatchEvent(keypressEvent); // dispatch keypress event
+    
+    const keyupEvent = new KeyboardEvent('keyup', {
+      key: 'Enter',
+      code: 'Enter',
+      keyCode: 13,
+      which: 13,
+      bubbles: true,
+      cancelable: true
+    });
+    element.dispatchEvent(keyupEvent); // dispatch keyup event
+    
+    // strategy 2: try to submit parent form if enter didn't work
+    await new Promise(resolve => setTimeout(resolve, 500)); // wait briefly
+    const form = element.closest('form'); // find parent form
+    if (form) { // check if form found
+      form.submit(); // submit form
+      return `pressed Enter and submitted form for element: ${selector}`; // return success message
+    }
+    
+    // strategy 3: try clicking submit button
+    const submitBtn = form ? form.querySelector('input[type="submit"], button[type="submit"], button:not([type])') : null; // find submit button
+    if (submitBtn) { // check if submit button found
+      submitBtn.click(); // click submit button
+      return `pressed Enter and clicked submit button for element: ${selector}`; // return success message
+    }
+    
+  } else {
+    // handle other keys normally
+    const keydownEvent = new KeyboardEvent('keydown', {
+      key: key,
+      code: key,
+      keyCode: key.charCodeAt(0),
+      which: key.charCodeAt(0),
+      bubbles: true
+    });
+    element.dispatchEvent(keydownEvent); // dispatch keydown event
+    
+    const keypressEvent = new KeyboardEvent('keypress', {
+      key: key,
+      code: key,
+      keyCode: key.charCodeAt(0),
+      which: key.charCodeAt(0),
+      bubbles: true
+    });
+    element.dispatchEvent(keypressEvent); // dispatch keypress event
+    
+    const keyupEvent = new KeyboardEvent('keyup', {
+      key: key,
+      code: key,
+      keyCode: key.charCodeAt(0),
+      which: key.charCodeAt(0),
+      bubbles: true
+    });
+    element.dispatchEvent(keyupEvent); // dispatch keyup event
+  }
   
   return `pressed ${key} on element: ${selector}`; // return success message
 }

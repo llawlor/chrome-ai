@@ -341,6 +341,18 @@ when selectors fail or you're unsure about page structure, use analyze_page to g
             addLog('action', `success: ${response.result}`); // log success
           } else if (response && !response.success) { // check if action failed
             addLog('error', `action failed: ${response.error}`); // log error
+            
+            // attempt automatic recovery with page analysis
+            const retryAction = await attemptActionRecovery(action, response.error); // try to recover
+            if (retryAction) { // check if recovery action available
+              addLog('action', 'attempting recovery with page analysis...'); // log recovery attempt
+              const retryResponse = await chrome.tabs.sendMessage(tab.id, {action: retryAction}); // retry with new action
+              if (retryResponse && retryResponse.success) { // check if retry succeeded
+                addLog('action', `recovery success: ${retryResponse.result}`); // log recovery success
+              } else {
+                addLog('error', `recovery failed: ${retryResponse ? retryResponse.error : 'no response'}`); // log recovery failure
+              }
+            }
           }
           await new Promise(resolve => setTimeout(resolve, 1000)); // wait between actions
         }
@@ -351,6 +363,60 @@ when selectors fail or you're unsure about page structure, use analyze_page to g
         addLog('error', errorMsg); // log error
         break;
       }
+    }
+  }
+
+  async function attemptActionRecovery(failedAction, error) {
+    try {
+      // determine what type of element we're looking for based on action
+      let focus = 'general';
+      let question = '';
+      
+      if (failedAction.type === 'type' || failedAction.type === 'press_key') { // check if input action
+        focus = 'search form';
+        question = `what is the correct selector for the main search input field? the failed selector was: ${failedAction.selector}`;
+      } else if (failedAction.type === 'click') { // check if click action
+        if (failedAction.selector.includes('search') || failedAction.selector.includes('submit')) { // check if search related
+          focus = 'search form';
+          question = `what is the correct selector for the search/submit button? the failed selector was: ${failedAction.selector}`;
+        } else {
+          focus = 'navigation';
+          question = `what is the correct selector for clicking this element? the failed selector was: ${failedAction.selector}`;
+        }
+      } else {
+        return null; // no recovery for other action types
+      }
+      
+      // get page analysis
+      const [tab] = await chrome.tabs.query({active: true, currentWindow: true});
+      const analysisAction = {type: 'analyze_page', focus: focus, question: question}; // create analysis action
+      const analysisResponse = await chrome.tabs.sendMessage(tab.id, {action: analysisAction}); // get page analysis
+      
+      if (!analysisResponse || !analysisResponse.success) { // check if analysis failed
+        return null;
+      }
+      
+      // get selector guidance from openai
+      const guidance = await requestSelectorGuidance(analysisResponse.result, question); // get guidance
+      if (!guidance) { // check if guidance failed
+        return null;
+      }
+      
+      // extract selector from guidance (look for css selector patterns)
+      const selectorMatch = guidance.match(/[#.]?[\w-]+(?:\[[\w="'-]+\])?(?:[#.][\w-]+)*/); // match selector pattern
+      if (!selectorMatch) { // check if no selector found
+        return null;
+      }
+      
+      // create new action with updated selector
+      const newAction = {...failedAction}; // copy failed action
+      newAction.selector = selectorMatch[0]; // update selector
+      return newAction;
+      
+    } catch (error) {
+      console.error('action recovery error:', error); // log error
+      addLog('error', `action recovery failed: ${error.message}`); // log error
+      return null;
     }
   }
 
@@ -365,7 +431,7 @@ when selectors fail or you're unsure about page structure, use analyze_page to g
       
       if (!result.openai_api_key) { // check if api key exists
         addLog('error', 'API key not found for selector guidance'); // log error
-        return;
+        return null;
       }
 
       const guidanceRequest = {
@@ -373,15 +439,15 @@ when selectors fail or you're unsure about page structure, use analyze_page to g
         messages: [
           {
             role: 'system',
-            content: `you are analyzing html structure to find correct css selectors. based on the provided html, answer the specific question about what selector to use. respond with just the selector or a brief explanation of what to do.`
+            content: `you are analyzing html structure to find correct css selectors. based on the provided html, answer the specific question about what selector to use. respond with just the css selector (like input[name="q"] or #search-button) without any explanation.`
           },
           {
             role: 'user',
             content: `${question}\n\nHTML STRUCTURE:\n${pageAnalysis}`
           }
         ],
-        temperature: 0.3,
-        max_tokens: 200
+        temperature: 0.1,
+        max_tokens: 50
       }; // create guidance request
       
       addLog('request', `openai guidance request: ${JSON.stringify(guidanceRequest, null, 2)}`); // log guidance request
@@ -400,12 +466,14 @@ when selectors fail or you're unsure about page structure, use analyze_page to g
       }
 
       const data = await response.json(); // parse response
-      const guidance = data.choices[0].message.content; // get guidance
+      const guidance = data.choices[0].message.content.trim(); // get guidance
       addLog('response', `selector guidance: ${guidance}`); // log guidance
+      return guidance;
       
     } catch (error) {
       console.error('selector guidance error:', error); // log error
       addLog('error', `selector guidance failed: ${error.message}`); // log error
+      return null;
     }
   }
 

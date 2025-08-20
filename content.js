@@ -237,45 +237,90 @@ async function analyzePage(focus, question) {
       }
     });
     
-    htmlContent += 'SEARCH-RELATED INPUTS:\n'; // add search inputs header
+    htmlContent += '\nSEARCH INPUTS:\n'; // add search inputs header
     searchInputs.forEach((input, i) => {
-      htmlContent += `SearchInput ${i + 1}: ${input.outerHTML}\n`; // add search input html
+      htmlContent += `Search Input ${i + 1}: ${input.outerHTML}\n`; // add search input html
     });
     
-    htmlContent += 'BUTTONS:\n'; // add buttons header
+    htmlContent += '\nBUTTONS:\n'; // add buttons header
     buttons.forEach((button, i) => {
-      if (i < 10) { // limit to first 10 buttons
+      if (i < 15) { // limit to first 15 buttons
         htmlContent += `Button ${i + 1}: ${button.outerHTML}\n`; // add button html
       }
     });
-  } else if (focus === 'navigation') { // check if analyzing navigation
-    const links = document.querySelectorAll('a, nav a, [role="navigation"] a'); // find navigation links
-    htmlContent += 'NAVIGATION LINKS:\n'; // add links header
-    links.forEach((link, i) => {
-      if (i < 20) { // limit to first 20 links
-        const text = link.textContent?.trim() || ''; // get link text
-        const href = link.href || ''; // get link href
-        htmlContent += `Link ${i + 1}: text="${text}" href="${href}" ${link.outerHTML}\n`; // add link details
+  } else if (focus.toLowerCase().includes('filter') || focus.toLowerCase().includes('prime')) { // check if analyzing filters
+    // find filter-related elements
+    const filterElements = document.querySelectorAll('[data-component-type="s-refinement"], .s-refinement, .a-checkbox, input[type="checkbox"], .facet, .filter'); // find filter elements
+    const sidebarElements = document.querySelectorAll('#leftNav, .s-refinements, .s-size-base-plus, [data-cy="refinements"]'); // find sidebar elements
+    const primeElements = document.querySelectorAll('[data-value*="prime" i], [aria-label*="prime" i], [title*="prime" i], .prime, #prime'); // find prime-specific elements
+    const checkboxes = document.querySelectorAll('input[type="checkbox"], .a-checkbox'); // find all checkboxes
+    
+    htmlContent += 'FILTER ELEMENTS:\n'; // add filter elements header
+    filterElements.forEach((element, i) => {
+      if (i < 20) { // limit to first 20 filter elements
+        htmlContent += `Filter ${i + 1}: ${element.outerHTML.substring(0, 500)}\n\n`; // add filter element html
       }
     });
-  } else { // general page analysis
-    // get page structure overview
-    const headings = document.querySelectorAll('h1, h2, h3'); // find headings
-    const mainContent = document.querySelector('main, [role="main"], .main-content'); // find main content
+    
+    htmlContent += 'SIDEBAR ELEMENTS:\n'; // add sidebar elements header
+    sidebarElements.forEach((element, i) => {
+      if (i < 5) { // limit to first 5 sidebar elements
+        htmlContent += `Sidebar ${i + 1}: ${element.outerHTML.substring(0, 1000)}\n\n`; // add sidebar element html
+      }
+    });
+    
+    htmlContent += 'PRIME ELEMENTS:\n'; // add prime elements header
+    primeElements.forEach((element, i) => {
+      if (i < 10) { // limit to first 10 prime elements
+        htmlContent += `Prime ${i + 1}: ${element.outerHTML}\n`; // add prime element html
+      }
+    });
+    
+    htmlContent += '\nCHECKBOXES:\n'; // add checkboxes header
+    checkboxes.forEach((checkbox, i) => {
+      if (i < 15) { // limit to first 15 checkboxes
+        htmlContent += `Checkbox ${i + 1}: ${checkbox.outerHTML}\n`; // add checkbox html
+      }
+    });
+  } else {
+    // for other focus types, capture general page structure
+    const headings = document.querySelectorAll('h1, h2, h3, h4, h5, h6'); // find all headings
+    const links = document.querySelectorAll('a'); // find all links
+    const buttons = document.querySelectorAll('button, input[type="submit"], input[type="button"]'); // find all buttons
+    const mainContent = document.querySelector('main, #main, .main, [role="main"]'); // find main content area
     
     htmlContent += 'PAGE HEADINGS:\n'; // add headings header
     headings.forEach((heading, i) => {
-      htmlContent += `${heading.tagName}: ${heading.textContent.trim()}\n`; // add heading text
+      if (i < 50) { // limit to first 50 headings
+        htmlContent += `${heading.tagName}: ${heading.textContent.trim()}\n`; // add heading text
+      }
+    });
+    
+    htmlContent += '\nNAVIGATION LINKS:\n'; // add links header
+    links.forEach((link, i) => {
+      if (i < 20) { // limit to first 20 links
+        htmlContent += `Link ${i + 1}: ${link.textContent.trim()} (href: ${link.href})\n`; // add link text and href
+      }
+    });
+    
+    htmlContent += '\nBUTTONS:\n'; // add buttons header
+    buttons.forEach((button, i) => {
+      if (i < 15) { // limit to first 15 buttons
+        htmlContent += `Button ${i + 1}: ${button.outerHTML}\n`; // add button html
+      }
     });
     
     if (mainContent) { // check if main content found
-      htmlContent += '\nMAIN CONTENT STRUCTURE:\n'; // add main content header
-      htmlContent += mainContent.outerHTML.substring(0, 1000) + '...\n'; // add main content html (truncated)
+      htmlContent += `\nMAIN CONTENT SNIPPET:\n${mainContent.outerHTML.substring(0, 1000)}\n`; // add main content snippet
     }
   }
   
-  // send html content back to popup for openai analysis
-  return `page analysis requested: ${question}\n\nHTML STRUCTURE:\n${htmlContent}`; // return analysis request
+  // truncate if too long
+  if (htmlContent.length > 4000) { // check if content too long
+    htmlContent = htmlContent.substring(0, 4000) + '...[truncated]'; // truncate content
+  }
+  
+  return `page analysis requested: ${question}\n\nHTML STRUCTURE:\n${htmlContent}`; // return analysis
 }
 
 async function waitSeconds(seconds) {

@@ -310,10 +310,16 @@ when selectors fail or you're unsure about page structure, use analyze_page to g
       currentActionIndex = 0; // reset action index
       await executeActions(actions); // execute actions
 
-      // clear input and show completion message
+      // clear input and show completion message only if no errors
+      const hasErrors = document.querySelectorAll('.log-entry.error').length > 0; // check for error logs
       instructionInput.value = ''; // clear instruction input
-      showTaskStatus('Task completed - waiting for next task', 'completed'); // show completion message
-      addLog('system', 'task completed - ready for next instruction'); // log completion
+      if (!hasErrors) { // check if no errors
+        showTaskStatus('Task completed - waiting for next task', 'completed'); // show completion message
+        addLog('system', 'task completed - ready for next instruction'); // log completion
+      } else {
+        showTaskStatus('Task finished with errors - check logs', 'error'); // show error completion
+        addLog('system', 'task finished with errors - ready for next instruction'); // log completion with errors
+      }
 
     } catch (error) {
       console.error('task execution error:', error); // log error
@@ -359,17 +365,28 @@ when selectors fail or you're unsure about page structure, use analyze_page to g
           
           try {
             // reinject content script after navigation
-            await chrome.scripting.executeScript({
-              target: { tabId: tab.id },
-              files: ['content.js']
-            }); // reinject content script
-            addLog('system', 'content script reinjected after navigation'); // log reinjection
+            if (chrome.scripting && chrome.scripting.executeScript) { // check if scripting api available
+              await chrome.scripting.executeScript({
+                target: { tabId: tab.id },
+                files: ['content.js']
+              }); // reinject content script
+              addLog('system', 'content script reinjected after navigation'); // log reinjection
+            } else {
+              addLog('system', 'scripting api not available - skipping reinject'); // log api unavailable
+            }
           } catch (reinjectError) {
             addLog('system', `content script reinject failed: ${reinjectError.message}`); // log reinject failure
           }
         } else if (action.type === 'complete') { // check if completion action
-          showTaskStatus(action.message, 'completed'); // show completion message
-          addLog('action', `task completed: ${action.message}`); // log completion
+          // only show completion if no previous errors occurred
+          const hasErrors = document.querySelectorAll('.log-entry.error').length > 0; // check for error logs
+          if (!hasErrors) { // check if no errors
+            showTaskStatus(action.message, 'completed'); // show completion message
+            addLog('action', `task completed: ${action.message}`); // log completion
+          } else {
+            showTaskStatus('task completed with errors - check logs', 'error'); // show error completion
+            addLog('action', `task completed with errors: ${action.message}`); // log completion with errors
+          }
           break;
         } else if (action.type === 'analyze_page') { // check if page analysis action
           const response = await chrome.tabs.sendMessage(tab.id, {action: action}); // send message to content script
@@ -400,11 +417,15 @@ when selectors fail or you're unsure about page structure, use analyze_page to g
                   await new Promise(resolve => setTimeout(resolve, 1000)); // wait 1 second
                   
                   try {
-                    await chrome.scripting.executeScript({
-                      target: { tabId: tab.id },
-                      files: ['content.js']
-                    }); // reinject content script
-                    addLog('system', `content script reinjected on retry ${retryCount}`); // log reinjection
+                    if (chrome.scripting && chrome.scripting.executeScript) { // check if scripting api available
+                      await chrome.scripting.executeScript({
+                        target: { tabId: tab.id },
+                        files: ['content.js']
+                      }); // reinject content script
+                      addLog('system', `content script reinjected on retry ${retryCount}`); // log reinjection
+                    } else {
+                      addLog('system', `scripting api not available on retry ${retryCount}`); // log api unavailable
+                    }
                   } catch (reinjectError) {
                     addLog('system', `reinject failed on retry ${retryCount}: ${reinjectError.message}`); // log reinject failure
                   }

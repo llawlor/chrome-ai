@@ -107,6 +107,51 @@
     .api-key-section.hidden {
       display: none;
     }
+    
+    .main-interface {
+      margin-top: 20px;
+    }
+    
+    .main-interface.hidden {
+      display: none;
+    }
+    
+    .instruction-input {
+      width: 100%;
+      min-height: 80px;
+      padding: 10px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      font-size: 14px;
+      font-family: Arial, sans-serif;
+      box-sizing: border-box;
+      resize: vertical;
+    }
+    
+    .submit-btn {
+      margin-top: 10px;
+      width: 100%;
+    }
+    
+    .task-status {
+      margin-top: 15px;
+      padding: 10px;
+      border-radius: 4px;
+      font-size: 12px;
+      display: none;
+    }
+    
+    .task-status.working {
+      background: #fff3cd;
+      color: #856404;
+      border: 1px solid #ffeaa7;
+    }
+    
+    .task-status.completed {
+      background: #d4edda;
+      color: #155724;
+      border: 1px solid #c3e6cb;
+    }
   </style>
 </head>
 <body>
@@ -121,6 +166,13 @@
       <div id="apiKeyStatus" class="api-key-stored"></div>
       <button id="saveApiKey">Save API Key</button>
       <button id="clearApiKey">Clear</button>
+    </div>
+    
+    <div class="main-interface hidden" id="mainInterface">
+      <label for="instructionInput">What would you like me to do?</label>
+      <textarea id="instructionInput" class="instruction-input" placeholder="Tell me what you'd like me to do on this website or any other site. For example: 'Go to Amazon and find the best rated wireless headphones under $100' or 'Navigate to GitHub and find trending JavaScript repositories'"></textarea>
+      <button id="submitInstruction" class="submit-btn">Execute Task</button>
+      <div id="taskStatus" class="task-status"></div>
     </div>
     
     <div id="status" class="status"></div>

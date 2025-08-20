@@ -62,7 +62,7 @@ document.addEventListener('DOMContentLoaded', function() {
   // handle task submission
   submitBtn.addEventListener('click', function() {
     const instruction = instructionInput.value.trim(); // get instruction text
-    
+
     if (!instruction) { // check if instruction is empty
       showStatus('Please enter an instruction', 'error'); // show error message
       return;
@@ -73,7 +73,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
   saveApiKeyBtn.addEventListener('click', function() {
     const apiKey = apiKeyInput.value.trim(); // get api key input value
-    
+
     if (!apiKey) { // check if api key is empty
       showStatus('Please enter an API key', 'error'); // show error message
       return;
@@ -125,7 +125,7 @@ document.addEventListener('DOMContentLoaded', function() {
         updateApiKeyStatus(false); // update status display
         updateMainInterface(false); // hide main interface
       }
-      
+
       // load persistent logs when popup opens
       await loadPersistentLogs(); // load saved logs
     });
@@ -159,15 +159,15 @@ document.addEventListener('DOMContentLoaded', function() {
     const timestamp = new Date().toLocaleTimeString(); // get current timestamp
     const logEntry = document.createElement('div'); // create log entry element
     logEntry.className = `log-entry ${type}`; // set log entry class
-    
+
     logEntry.innerHTML = `
       <div class="log-timestamp">[${timestamp}] ${type.toUpperCase()}</div>
       <div class="log-content">${content}</div>
     `; // set log entry html
-    
+
     logsContainer.appendChild(logEntry); // add log entry to container
     logsContainer.scrollTop = logsContainer.scrollHeight; // scroll to bottom
-    
+
     // save log to persistent storage
     saveLogToPersistentStorage(type, content, timestamp); // persist log
   }
@@ -187,12 +187,12 @@ document.addEventListener('DOMContentLoaded', function() {
       pauseBtn.style.background = '#dc3545'; // reset button color
       showTaskStatus('Processing your request...', 'working'); // show working status
       addLog('request', `user instruction: ${instruction}`); // log user instruction
-      
+
       // get api key from storage
       const result = await new Promise((resolve) => {
         chrome.storage.local.get(['openai_api_key'], resolve);
       });
-      
+
       if (!result.openai_api_key) { // check if api key exists
         const errorMsg = 'API key not found. Please add your API key first.'; // create error message
         showStatus(errorMsg, 'error'); // show error message
@@ -208,7 +208,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
       // prepare openai request
       const requestBody = {
-        model: 'gpt-4',
+        model: 'gpt-5-mini',
         messages: [
           {
             role: 'system',
@@ -255,9 +255,9 @@ when selectors fail or you're unsure about page structure, use analyze_page to g
         temperature: 0.7,
         max_tokens: 1000
       }; // create request body
-      
+
       addLog('request', `openai request: ${JSON.stringify(requestBody, null, 2)}`); // log openai request
-      
+
       const response = await fetch('https://api.openai.com/v1/chat/completions', {
         method: 'POST',
         headers: {
@@ -274,7 +274,7 @@ when selectors fail or you're unsure about page structure, use analyze_page to g
       const data = await response.json(); // parse response
       addLog('response', `openai response: ${JSON.stringify(data, null, 2)}`); // log openai response
       const aiResponse = data.choices[0].message.content; // get ai response
-      
+
       // parse ai response as json
       let actions;
       try {
@@ -320,7 +320,7 @@ when selectors fail or you're unsure about page structure, use analyze_page to g
         addLog('action', `executing (${i + 1}/${actions.length}): ${JSON.stringify(action)}`); // log action execution with progress
         // send action to content script
         const [tab] = await chrome.tabs.query({active: true, currentWindow: true});
-        
+
         if (action.type === 'navigate') { // check if navigation action
           await chrome.tabs.update(tab.id, {url: action.url}); // navigate to url
           addLog('action', `navigated to: ${action.url}`); // log navigation
@@ -346,7 +346,7 @@ when selectors fail or you're unsure about page structure, use analyze_page to g
             addLog('action', `success: ${response.result}`); // log success
           } else if (response && !response.success) { // check if action failed
             addLog('error', `action failed: ${response.error}`); // log error
-            
+
             // attempt automatic recovery with page analysis
             const retryAction = await attemptActionRecovery(action, response.error); // try to recover
             if (retryAction) { // check if recovery action available
@@ -376,7 +376,7 @@ when selectors fail or you're unsure about page structure, use analyze_page to g
       // determine what type of element we're looking for based on action
       let focus = 'general';
       let question = '';
-      
+
       if (failedAction.type === 'type' || failedAction.type === 'press_key') { // check if input action
         focus = 'search form';
         question = `what is the correct selector for the main search input field? the failed selector was: ${failedAction.selector}`;
@@ -391,25 +391,25 @@ when selectors fail or you're unsure about page structure, use analyze_page to g
       } else {
         return null; // no recovery for other action types
       }
-      
+
       // get page analysis
       const [tab] = await chrome.tabs.query({active: true, currentWindow: true});
       const analysisAction = {type: 'analyze_page', focus: focus, question: question}; // create analysis action
       const analysisResponse = await chrome.tabs.sendMessage(tab.id, {action: analysisAction}); // get page analysis
-      
+
       if (!analysisResponse || !analysisResponse.success) { // check if analysis failed
         return null;
       }
-      
+
       // get selector guidance from openai
       const guidance = await requestSelectorGuidance(analysisResponse.result, question); // get guidance
       if (!guidance) { // check if guidance failed
         return null;
       }
-      
+
       // extract selector from guidance - handle various response formats
       let extractedSelector = null;
-      
+
       // try to find a css selector in the response
       const selectorPatterns = [
         /([#.][\w-]+(?:\[[\w="'-\s]+\])?)/g, // id/class selectors with attributes
@@ -420,7 +420,7 @@ when selectors fail or you're unsure about page structure, use analyze_page to g
         /(#[\w-]+)/g, // id selectors
         /(\.[\w-]+)/g // class selectors
       ];
-      
+
       for (const pattern of selectorPatterns) {
         const matches = guidance.match(pattern);
         if (matches && matches.length > 0) {
@@ -428,7 +428,7 @@ when selectors fail or you're unsure about page structure, use analyze_page to g
           break;
         }
       }
-      
+
       // if no selector pattern found, check if the response itself looks like a selector
       if (!extractedSelector && guidance.length < 100) {
         const trimmed = guidance.trim();
@@ -436,18 +436,18 @@ when selectors fail or you're unsure about page structure, use analyze_page to g
           extractedSelector = trimmed;
         }
       }
-      
+
       if (!extractedSelector) { // check if no selector found
         addLog('error', `could not extract selector from guidance: ${guidance}`);
         return null;
       }
-      
+
       // create new action with updated selector
       const newAction = {...failedAction}; // copy failed action
       newAction.selector = extractedSelector; // update selector
       addLog('action', `extracted selector for retry: ${extractedSelector}`);
       return newAction;
-      
+
     } catch (error) {
       console.error('action recovery error:', error); // log error
       addLog('error', `action recovery failed: ${error.message}`); // log error
@@ -458,19 +458,19 @@ when selectors fail or you're unsure about page structure, use analyze_page to g
   async function requestSelectorGuidance(pageAnalysis, question) {
     try {
       addLog('request', `requesting selector guidance: ${question}`); // log guidance request
-      
+
       // get api key from storage
       const result = await new Promise((resolve) => {
         chrome.storage.local.get(['openai_api_key'], resolve);
       });
-      
+
       if (!result.openai_api_key) { // check if api key exists
         addLog('error', 'API key not found for selector guidance'); // log error
         return null;
       }
 
       const guidanceRequest = {
-        model: 'gpt-4',
+        model: 'gpt-4o-mini',
         messages: [
           {
             role: 'system',
@@ -484,9 +484,9 @@ when selectors fail or you're unsure about page structure, use analyze_page to g
         temperature: 0.1,
         max_tokens: 50
       }; // create guidance request
-      
+
       addLog('request', `openai guidance request: ${JSON.stringify(guidanceRequest, null, 2)}`); // log guidance request
-      
+
       const response = await fetch('https://api.openai.com/v1/chat/completions', {
         method: 'POST',
         headers: {
@@ -506,7 +506,7 @@ when selectors fail or you're unsure about page structure, use analyze_page to g
       const guidance = data.choices[0].message.content.trim(); // get guidance
       addLog('response', `selector guidance: ${guidance}`); // log guidance
       return guidance;
-      
+
     } catch (error) {
       console.error('selector guidance error:', error); // log error
       addLog('error', `selector guidance failed: ${error.message}`); // log error
@@ -520,9 +520,9 @@ when selectors fail or you're unsure about page structure, use analyze_page to g
       const result = await new Promise((resolve) => {
         chrome.storage.local.get(['persistent_logs'], resolve);
       });
-      
+
       const logs = result.persistent_logs || []; // get existing logs or empty array
-      
+
       // add new log entry
       logs.push({
         type: type,
@@ -530,17 +530,17 @@ when selectors fail or you're unsure about page structure, use analyze_page to g
         timestamp: timestamp,
         fullTimestamp: new Date().toISOString()
       }); // add log entry
-      
+
       // keep only last 1000 log entries to prevent storage overflow
       if (logs.length > 1000) {
         logs.splice(0, logs.length - 1000); // remove oldest entries
       }
-      
+
       // save updated logs to storage
       await new Promise((resolve) => {
         chrome.storage.local.set({persistent_logs: logs}, resolve);
       });
-      
+
     } catch (error) {
       console.error('failed to save log to persistent storage:', error); // log error
     }
@@ -552,26 +552,26 @@ when selectors fail or you're unsure about page structure, use analyze_page to g
       const result = await new Promise((resolve) => {
         chrome.storage.local.get(['persistent_logs'], resolve);
       });
-      
+
       const logs = result.persistent_logs || []; // get logs or empty array
-      
+
       // display logs in ui
       logs.forEach(log => {
         const logEntry = document.createElement('div'); // create log entry element
         logEntry.className = `log-entry ${log.type}`; // set log entry class
-        
+
         logEntry.innerHTML = `
           <div class="log-timestamp">[${log.timestamp}] ${log.type.toUpperCase()}</div>
           <div class="log-content">${log.content}</div>
         `; // set log entry html
-        
+
         logsContainer.appendChild(logEntry); // add log entry to container
       });
-      
+
       if (logs.length > 0) {
         logsContainer.scrollTop = logsContainer.scrollHeight; // scroll to bottom
       }
-      
+
     } catch (error) {
       console.error('failed to load persistent logs:', error); // log error
     }
@@ -583,10 +583,10 @@ when selectors fail or you're unsure about page structure, use analyze_page to g
       await new Promise((resolve) => {
         chrome.storage.local.set({persistent_logs: []}, resolve);
       });
-      
+
       // clear logs from ui
       logsContainer.innerHTML = ''; // clear container
-      
+
     } catch (error) {
       console.error('failed to clear persistent logs:', error); // log error
     }
@@ -596,7 +596,7 @@ when selectors fail or you're unsure about page structure, use analyze_page to g
     status.textContent = message; // set status message
     status.className = `status ${type}`; // set status class for styling
     status.style.display = 'block'; // show status element
-    
+
     // hide status after 3 seconds
     setTimeout(() => {
       status.style.display = 'none'; // hide status element

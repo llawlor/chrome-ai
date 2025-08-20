@@ -178,6 +178,23 @@ document.addEventListener('DOMContentLoaded', function() {
     taskStatus.style.display = 'block'; // show task status element
   }
 
+  function getActionDescription(action) {
+    // convert action to human-readable description
+    switch (action.type) {
+      case 'navigate': return `navigating to ${action.url}`;
+      case 'click': return `clicking element`;
+      case 'type': return `typing "${action.text}"`;
+      case 'press_key': return `pressing ${action.key} key`;
+      case 'submit': return `submitting form`;
+      case 'wait': return `waiting ${action.seconds} seconds`;
+      case 'scroll': return `scrolling ${action.direction}`;
+      case 'extract': return `extracting content`;
+      case 'analyze_page': return `analyzing page structure`;
+      case 'complete': return `completing task`;
+      default: return `executing ${action.type}`;
+    }
+  }
+
   async function executeTask(instruction) {
     try {
       submitBtn.disabled = true; // disable submit button
@@ -314,23 +331,29 @@ when selectors fail or you're unsure about page structure, use analyze_page to g
   }
 
   async function executeActionsFromIndex(actions, startIndex) {
-    for (let i = startIndex; i < actions.length; i++) { // iterate through actions from start index
-      if (isPaused) { // check if execution is paused
-        currentActionIndex = i; // save current index for resume
-        addLog('action', `execution paused at action ${i + 1} of ${actions.length}`); // log pause
+    for (let i = startIndex; i < actions.length; i++) { // loop through actions
+      if (isPaused) { // check if paused
+        currentActionIndex = i; // save current index
+        showTaskStatus('execution paused - click resume to continue', 'paused'); // show paused status
         return; // exit function
       }
-
+      
       const action = actions[i]; // get current action
+      
+      // show immediate feedback for current action
+      const actionDescription = getActionDescription(action); // get human-readable description
+      showTaskStatus(`executing step ${i + 1}/${actions.length}: ${actionDescription}`, 'working'); // show current action
+      
+      addLog('action', `executing (${i + 1}/${actions.length}): ${JSON.stringify(action)}`); // log action
+      
       try {
-        addLog('action', `executing (${i + 1}/${actions.length}): ${JSON.stringify(action)}`); // log action execution with progress
-        // send action to content script
+        await new Promise(resolve => setTimeout(resolve, 300)); // reduced wait between actions to content script
         const [tab] = await chrome.tabs.query({active: true, currentWindow: true});
 
         if (action.type === 'navigate') { // check if navigation action
           await chrome.tabs.update(tab.id, {url: action.url}); // navigate to url
           addLog('action', `navigated to: ${action.url}`); // log navigation
-          await new Promise(resolve => setTimeout(resolve, 2000)); // wait for page load
+          await new Promise(resolve => setTimeout(resolve, 1000)); // wait between actions
         } else if (action.type === 'complete') { // check if completion action
           showTaskStatus(action.message, 'completed'); // show completion message
           addLog('action', `task completed: ${action.message}`); // log completion
@@ -466,31 +489,29 @@ when selectors fail or you're unsure about page structure, use analyze_page to g
       addLog('request', `requesting selector guidance: ${question}`); // log guidance request
 
       // get api key from storage
-      const result = await new Promise((resolve) => {
-        chrome.storage.local.get(['openai_api_key'], resolve);
-      });
-
-      if (!result.openai_api_key) { // check if api key exists
-        addLog('error', 'API key not found for selector guidance'); // log error
-        return null;
+      const result = await chrome.storage.local.get(['openai_api_key']); // get api key
+      if (!result.openai_api_key) { // check if no api key
+        throw new Error('openai api key not found'); // throw error
       }
 
-      const guidanceRequest = {
-        model: 'gpt-4o-mini',
+      const requestBody = {
+        model: 'gpt-5-mini', // use gpt-5-mini model
         messages: [
           {
             role: 'system',
-            content: `you are analyzing html structure to find correct css selectors. based on the provided html, answer the specific question about what selector to use. respond with just the css selector (like input[name="q"] or #search-button) without any explanation.`
+            content: 'you are a web automation expert. analyze the provided html and suggest the correct css selector. respond with just the selector, nothing else. if multiple selectors could work, choose the most reliable one.'
           },
           {
-            role: 'user',
-            content: `${question}\n\nHTML STRUCTURE:\n${pageAnalysis}`
+            role: 'user', 
+            content: pageAnalysis
           }
         ],
-        max_completion_tokens: 50
-      }; // create guidance request
+        max_completion_tokens: 50 // reduced for faster response
+      };
 
-      addLog('request', `openai guidance request: ${JSON.stringify(guidanceRequest, null, 2)}`); // log guidance request
+      // add timeout for faster error recovery
+      const controller = new AbortController(); // create abort controller
+      const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
 
       const response = await fetch('https://api.openai.com/v1/chat/completions', {
         method: 'POST',
@@ -498,24 +519,26 @@ when selectors fail or you're unsure about page structure, use analyze_page to g
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${result.openai_api_key}`
         },
-        body: JSON.stringify(guidanceRequest)
+        body: JSON.stringify(requestBody),
+        signal: controller.signal // add abort signal
       });
 
-      if (!response.ok) { // check if request failed
-        const errorText = await response.text(); // get error details
-        addLog('error', `openai api error ${response.status}: ${errorText}`); // log detailed error
-        throw new Error(`openai api error: ${response.status}`); // throw error
+      clearTimeout(timeoutId); // clear timeout
+
+      if (!response.ok) { // check if response not ok
+        const errorData = await response.json(); // get error data
+        throw new Error(`openai api error: ${response.status} - ${JSON.stringify(errorData)}`); // throw detailed error
       }
 
       const data = await response.json(); // parse response
-      const guidance = data.choices[0].message.content.trim(); // get guidance
-      addLog('response', `selector guidance: ${guidance}`); // log guidance
-      return guidance;
-
+      return data.choices[0].message.content.trim(); // return guidance
     } catch (error) {
-      console.error('selector guidance error:', error); // log error
-      addLog('error', `selector guidance failed: ${error.message}`); // log error
-      return null;
+      if (error.name === 'AbortError') { // check if timeout error
+        addLog('error', `selector guidance timeout - continuing without recovery`); // log timeout
+      } else {
+        addLog('error', `selector guidance error: ${error.message}`); // log error
+      }
+      return null; // return null on error
     }
   }
 

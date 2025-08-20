@@ -10,6 +10,11 @@ document.addEventListener('DOMContentLoaded', function() {
   const instructionInput = document.getElementById('instructionInput'); // get instruction input element
   const submitBtn = document.getElementById('submitInstruction'); // get submit button element
   const taskStatus = document.getElementById('taskStatus'); // get task status element
+  const logsSection = document.getElementById('logsSection'); // get logs section element
+  const logsToggle = document.getElementById('logsToggle'); // get logs toggle element
+  const logsContainer = document.getElementById('logsContainer'); // get logs container element
+  const logsContent = document.getElementById('logsContent'); // get logs content element
+  const clearLogsBtn = document.getElementById('clearLogs'); // get clear logs button element
 
   // load existing api key on popup open
   loadApiKey();
@@ -17,6 +22,18 @@ document.addEventListener('DOMContentLoaded', function() {
   // toggle api key section visibility when link is clicked
   apiKeyLink.addEventListener('click', function() {
     apiKeySection.classList.toggle('hidden'); // toggle hidden class
+  });
+
+  // toggle logs visibility when toggle is clicked
+  logsToggle.addEventListener('click', function() {
+    logsContainer.classList.toggle('hidden'); // toggle logs container visibility
+    logsToggle.textContent = logsContainer.classList.contains('hidden') ? 'Show Logs' : 'Hide Logs'; // update toggle text
+  });
+
+  // clear logs when button is clicked
+  clearLogsBtn.addEventListener('click', function() {
+    logsContent.innerHTML = ''; // clear logs content
+    addLog('system', 'logs cleared'); // add system log
   });
 
   // handle task submission
@@ -101,9 +118,25 @@ document.addEventListener('DOMContentLoaded', function() {
   function updateMainInterface(show) {
     if (show) { // check if should show main interface
       mainInterface.classList.remove('hidden'); // show main interface
+      logsSection.classList.remove('hidden'); // show logs section
     } else {
       mainInterface.classList.add('hidden'); // hide main interface
+      logsSection.classList.add('hidden'); // hide logs section
     }
+  }
+
+  function addLog(type, content) {
+    const timestamp = new Date().toLocaleTimeString(); // get current timestamp
+    const logEntry = document.createElement('div'); // create log entry element
+    logEntry.className = `log-entry ${type}`; // set log entry class
+    
+    logEntry.innerHTML = `
+      <div class="log-timestamp">[${timestamp}] ${type.toUpperCase()}</div>
+      <div class="log-content">${content}</div>
+    `; // set log entry content
+    
+    logsContent.appendChild(logEntry); // add log entry to logs content
+    logsContainer.scrollTop = logsContainer.scrollHeight; // scroll to bottom
   }
 
   function showTaskStatus(message, type) {
@@ -116,6 +149,7 @@ document.addEventListener('DOMContentLoaded', function() {
     try {
       submitBtn.disabled = true; // disable submit button
       showTaskStatus('Processing your request...', 'working'); // show working status
+      addLog('request', `user instruction: ${instruction}`); // log user instruction
       
       // get api key from storage
       const result = await new Promise((resolve) => {
@@ -123,7 +157,9 @@ document.addEventListener('DOMContentLoaded', function() {
       });
       
       if (!result.openai_api_key) { // check if api key exists
-        showStatus('API key not found. Please add your API key first.', 'error'); // show error message
+        const errorMsg = 'API key not found. Please add your API key first.'; // create error message
+        showStatus(errorMsg, 'error'); // show error message
+        addLog('error', errorMsg); // log error
         return;
       }
 
@@ -131,20 +167,15 @@ document.addEventListener('DOMContentLoaded', function() {
       const [tab] = await chrome.tabs.query({active: true, currentWindow: true});
       const currentUrl = tab.url; // get current tab url
       const currentTitle = tab.title; // get current tab title
+      addLog('request', `current page: ${currentTitle} (${currentUrl})`); // log current page
 
       // prepare openai request
-      const response = await fetch('https://api.openai.com/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${result.openai_api_key}`
-        },
-        body: JSON.stringify({
-          model: 'gpt-4',
-          messages: [
-            {
-              role: 'system',
-              content: `you are an ai assistant that helps users navigate and interact with websites. you can:
+      const requestBody = {
+        model: 'gpt-4',
+        messages: [
+          {
+            role: 'system',
+            content: `you are an ai assistant that helps users navigate and interact with websites. you can:
 1. navigate to websites by providing urls
 2. click on links and buttons by providing css selectors
 3. fill out forms by providing selectors and values
@@ -179,15 +210,25 @@ example for amazon search:
 2. type search term in search box
 3. click search button or press enter to execute search
 4. extract results or complete task`
-            },
-            {
-              role: 'user',
-              content: instruction
-            }
-          ],
-          temperature: 0.7,
-          max_tokens: 1000
-        })
+          },
+          {
+            role: 'user',
+            content: instruction
+          }
+        ],
+        temperature: 0.7,
+        max_tokens: 1000
+      }; // create request body
+      
+      addLog('request', `openai request: ${JSON.stringify(requestBody, null, 2)}`); // log openai request
+      
+      const response = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${result.openai_api_key}`
+        },
+        body: JSON.stringify(requestBody)
       });
 
       if (!response.ok) { // check if request failed
@@ -195,6 +236,7 @@ example for amazon search:
       }
 
       const data = await response.json(); // parse response
+      addLog('response', `openai response: ${JSON.stringify(data, null, 2)}`); // log openai response
       const aiResponse = data.choices[0].message.content; // get ai response
       
       // parse ai response as json
@@ -202,8 +244,11 @@ example for amazon search:
       try {
         const parsed = JSON.parse(aiResponse); // parse json response
         actions = parsed.actions; // get actions array
+        addLog('response', `parsed actions: ${JSON.stringify(actions, null, 2)}`); // log parsed actions
       } catch (e) {
-        throw new Error('invalid response format from ai'); // throw error
+        const errorMsg = 'invalid response format from ai'; // create error message
+        addLog('error', `${errorMsg}: ${aiResponse}`); // log error with response
+        throw new Error(errorMsg); // throw error
       }
 
       // execute actions via content script
@@ -211,7 +256,9 @@ example for amazon search:
 
     } catch (error) {
       console.error('task execution error:', error); // log error
-      showTaskStatus(`Error: ${error.message}`, 'error'); // show error status
+      const errorMsg = `Error: ${error.message}`; // create error message
+      showTaskStatus(errorMsg, 'error'); // show error status
+      addLog('error', errorMsg); // log error
     } finally {
       submitBtn.disabled = false; // re-enable submit button
     }
@@ -220,23 +267,33 @@ example for amazon search:
   async function executeActions(actions) {
     for (const action of actions) { // iterate through actions
       try {
+        addLog('action', `executing: ${JSON.stringify(action)}`); // log action execution
         // send action to content script
         const [tab] = await chrome.tabs.query({active: true, currentWindow: true});
         
         if (action.type === 'navigate') { // check if navigation action
           await chrome.tabs.update(tab.id, {url: action.url}); // navigate to url
+          addLog('action', `navigated to: ${action.url}`); // log navigation
           await new Promise(resolve => setTimeout(resolve, 2000)); // wait for page load
         } else if (action.type === 'complete') { // check if completion action
           showTaskStatus(action.message, 'completed'); // show completion message
+          addLog('action', `task completed: ${action.message}`); // log completion
           break;
         } else {
           // send other actions to content script
-          await chrome.tabs.sendMessage(tab.id, {action: action}); // send message to content script
+          const response = await chrome.tabs.sendMessage(tab.id, {action: action}); // send message to content script
+          if (response && response.success) { // check if action succeeded
+            addLog('action', `success: ${response.result}`); // log success
+          } else if (response && !response.success) { // check if action failed
+            addLog('error', `action failed: ${response.error}`); // log error
+          }
           await new Promise(resolve => setTimeout(resolve, 1000)); // wait between actions
         }
       } catch (error) {
         console.error('action execution error:', error); // log error
-        showTaskStatus(`Error executing action: ${error.message}`, 'error'); // show error
+        const errorMsg = `Error executing action: ${error.message}`; // create error message
+        showTaskStatus(errorMsg, 'error'); // show error
+        addLog('error', errorMsg); // log error
         break;
       }
     }

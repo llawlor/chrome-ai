@@ -152,6 +152,92 @@
       color: #155724;
       border: 1px solid #c3e6cb;
     }
+    
+    .logs-section {
+      margin-top: 20px;
+      border-top: 1px solid #ddd;
+      padding-top: 15px;
+    }
+    
+    .logs-section.hidden {
+      display: none;
+    }
+    
+    .logs-toggle {
+      color: #007cba;
+      text-decoration: underline;
+      cursor: pointer;
+      font-size: 12px;
+      margin-bottom: 10px;
+      display: inline-block;
+    }
+    
+    .logs-toggle:hover {
+      color: #005a87;
+    }
+    
+    .logs-container {
+      max-height: 300px;
+      overflow-y: auto;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      padding: 10px;
+      background: #f8f9fa;
+      font-family: monospace;
+      font-size: 11px;
+    }
+    
+    .log-entry {
+      margin-bottom: 8px;
+      padding: 5px;
+      border-radius: 3px;
+    }
+    
+    .log-entry.request {
+      background: #e3f2fd;
+      border-left: 3px solid #2196f3;
+    }
+    
+    .log-entry.response {
+      background: #f3e5f5;
+      border-left: 3px solid #9c27b0;
+    }
+    
+    .log-entry.action {
+      background: #e8f5e8;
+      border-left: 3px solid #4caf50;
+    }
+    
+    .log-entry.error {
+      background: #ffebee;
+      border-left: 3px solid #f44336;
+    }
+    
+    .log-timestamp {
+      color: #666;
+      font-size: 10px;
+    }
+    
+    .log-content {
+      margin-top: 3px;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    
+    .clear-logs {
+      margin-top: 10px;
+      padding: 5px 10px;
+      font-size: 11px;
+      background: #6c757d;
+      color: white;
+      border: none;
+      border-radius: 3px;
+      cursor: pointer;
+    }
+    
+    .clear-logs:hover {
+      background: #5a6268;
+    }
   </style>
 </head>
 <body>
@@ -173,6 +259,14 @@
       <textarea id="instructionInput" class="instruction-input" placeholder="Tell me what you'd like me to do on this website or any other site. For example: 'Go to Amazon and find the best rated wireless headphones under $100' or 'Navigate to GitHub and find trending JavaScript repositories'"></textarea>
       <button id="submitInstruction" class="submit-btn">Execute Task</button>
       <div id="taskStatus" class="task-status"></div>
+    </div>
+    
+    <div class="logs-section hidden" id="logsSection">
+      <div id="logsToggle" class="logs-toggle">Show Logs</div>
+      <div class="logs-container hidden" id="logsContainer">
+        <div id="logsContent"></div>
+        <button id="clearLogs" class="clear-logs">Clear Logs</button>
+      </div>
     </div>
     
     <div id="status" class="status"></div>

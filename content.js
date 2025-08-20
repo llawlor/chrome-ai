@@ -4,9 +4,16 @@ console.log('content script loaded'); // log when content script loads
 // listen for messages from popup
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action) { // check if action is provided
+    console.log('content script executing action:', request.action); // log action execution
     executeAction(request.action) // execute the action
-      .then(result => sendResponse({success: true, result: result})) // send success response
-      .catch(error => sendResponse({success: false, error: error.message})); // send error response
+      .then(result => {
+        console.log('content script action success:', result); // log success
+        sendResponse({success: true, result: result}); // send success response
+      })
+      .catch(error => {
+        console.error('content script action error:', error); // log error
+        sendResponse({success: false, error: error.message}); // send error response
+      });
     return true; // keep message channel open for async response
   }
 });

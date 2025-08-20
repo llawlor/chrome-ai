@@ -269,7 +269,7 @@ when selectors fail or you're unsure about page structure, use analyze_page to g
             content: instruction
           }
         ],
-        max_completion_tokens: 1000
+        max_completion_tokens: 1500
       }; // create request body
 
       addLog('request', `openai request: ${JSON.stringify(requestBody, null, 2)}`); // log openai request
@@ -293,15 +293,28 @@ when selectors fail or you're unsure about page structure, use analyze_page to g
       addLog('response', `openai response: ${JSON.stringify(data, null, 2)}`); // log openai response
       const aiResponse = data.choices[0].message.content; // get ai response
 
+      // check if response is empty or null
+      if (!aiResponse || aiResponse.trim() === '') { // check for empty response
+        const errorMsg = 'received empty response from ai - this may be due to token limits or model issues'; // create error message
+        addLog('error', errorMsg); // log error
+        throw new Error(errorMsg); // throw error
+      }
+
       // parse ai response as json
       let actions;
       try {
         const parsed = JSON.parse(aiResponse); // parse json response
         actions = parsed.actions; // get actions array
+        
+        // validate actions array exists and is not empty
+        if (!actions || !Array.isArray(actions) || actions.length === 0) { // check for valid actions
+          throw new Error('no valid actions found in response'); // throw error
+        }
+        
         addLog('response', `parsed actions: ${JSON.stringify(actions, null, 2)}`); // log parsed actions
       } catch (e) {
         const errorMsg = 'invalid response format from ai'; // create error message
-        addLog('error', `${errorMsg}: ${aiResponse}`); // log error with response
+        addLog('error', `${errorMsg}: ${aiResponse || 'empty response'}`); // log error with response
         throw new Error(errorMsg); // throw error
       }
 

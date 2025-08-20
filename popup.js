@@ -252,7 +252,6 @@ when selectors fail or you're unsure about page structure, use analyze_page to g
             content: instruction
           }
         ],
-        temperature: 0.7,
         max_completion_tokens: 1000
       }; // create request body
 
@@ -483,7 +482,6 @@ when selectors fail or you're unsure about page structure, use analyze_page to g
             content: `${question}\n\nHTML STRUCTURE:\n${pageAnalysis}`
           }
         ],
-        temperature: 0.1,
         max_completion_tokens: 50
       }; // create guidance request
 

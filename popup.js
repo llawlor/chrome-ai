@@ -213,10 +213,15 @@ document.addEventListener('DOMContentLoaded', function() {
 
 current page: ${currentTitle} (${currentUrl})
 
-important: when filling out search forms or inputs, always follow up with submitting the form by either:
-- clicking the search/submit button (preferred)
-- pressing enter key on the input field
-- submitting the form element
+important: when filling out search forms or inputs, always follow up with submitting the form. use these strategies in order of preference:
+1. press enter key on the input field (most reliable)
+2. click the submit/search button if enter doesn't work
+3. submit the parent form element
+
+for amazon specifically:
+- search input selector: #twotabsearchtextbox
+- always use press_key with "Enter" on the search input instead of clicking submit button
+- search results selector: [data-component-type="s-search-result"]
 
 respond with json containing an array of actions to perform:
 {
@@ -224,8 +229,8 @@ respond with json containing an array of actions to perform:
     {"type": "navigate", "url": "https://example.com"},
     {"type": "click", "selector": ".button-class"},
     {"type": "type", "selector": "#input-id", "text": "text to type"},
-    {"type": "submit", "selector": "#form-id"},
     {"type": "press_key", "selector": "#input-id", "key": "Enter"},
+    {"type": "submit", "selector": "#form-id"},
     {"type": "scroll", "direction": "down"},
     {"type": "extract", "selector": ".content", "description": "what to extract"},
     {"type": "wait", "seconds": 2},
@@ -235,9 +240,10 @@ respond with json containing an array of actions to perform:
 
 example for amazon search:
 1. navigate to amazon.com
-2. type search term in search box
-3. click search button or press enter to execute search
-4. extract results or complete task`
+2. type search term in #twotabsearchtextbox
+3. press enter on the search input (preferred method)
+4. wait for results to load
+5. extract results using [data-component-type="s-search-result"]`
           },
           {
             role: 'user',

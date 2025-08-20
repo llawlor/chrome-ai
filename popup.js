@@ -408,7 +408,7 @@ when selectors fail or you're unsure about page structure, use analyze_page to g
           
           while (retryCount < maxRetries) { // retry loop
             try {
-              response = await chrome.tabs.sendMessage(tab.id, { action: action.type, ...action }); // send message
+              response = await chrome.tabs.sendMessage(tab.id, { action: action }); // send message
               break; // success, exit retry loop
             } catch (error) {
               retryCount++; // increment retry count

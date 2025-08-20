@@ -397,6 +397,9 @@ when selectors fail or you're unsure about page structure, use analyze_page to g
           } else if (response && !response.success) { // check if analysis failed
             addLog('error', `page analysis failed: ${response.error}`); // log error
           }
+        } else if (action.type === 'wait') { // check if wait action
+          await new Promise(resolve => setTimeout(resolve, action.seconds * 1000)); // wait specified seconds
+          addLog('action', `waited ${action.seconds} seconds`); // log wait
         } else { // check if other action type
           // send message to content script with retry logic
           let response;
@@ -435,14 +438,38 @@ when selectors fail or you're unsure about page structure, use analyze_page to g
               }
             }
           }
-          await new Promise(resolve => setTimeout(resolve, 1000)); // wait between actions
+          if (!response && retryCount >= maxRetries) { // check if all retries failed
+            const errorMsg = 'failed to communicate with content script after retries'; // create error message
+            addLog('error', errorMsg); // log error
+            throw new Error(errorMsg); // throw error
+          }
+          
+          if (!response) { // check if no response received
+            const errorMsg = 'no response from content script'; // create error message
+            addLog('error', `action failed: ${errorMsg}`); // log error
+            throw new Error(errorMsg); // throw error
+          }
+          
+          if (response && response.success) { // check if action succeeded
+            addLog('action', response.result); // log success
+          } else {
+            const errorMsg = response.error || 'action failed with unknown error'; // create error message
+            addLog('error', `action failed: ${errorMsg}`); // log error
+            throw new Error(errorMsg); // throw error
+          }
+
         }
+        await new Promise(resolve => setTimeout(resolve, 1000)); // wait between actions
       } catch (error) {
-        console.error('action execution error:', error); // log error
+        console.error('action execution error:', error); // log error to console
         const errorMsg = `Error executing action: ${error.message}`; // create error message
-        showTaskStatus(errorMsg, 'error'); // show error
+        showTaskStatus(errorMsg, 'error'); // show error status
         addLog('error', errorMsg); // log error
-        break;
+        
+        // stop execution and mark task as failed
+        showTaskStatus('Task failed - check logs for details', 'error'); // show failure status
+        addLog('system', 'task execution stopped due to error'); // log task failure
+        return; // exit function to prevent further execution
       }
     }
   }

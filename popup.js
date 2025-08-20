@@ -215,7 +215,7 @@ document.addEventListener('DOMContentLoaded', function() {
 5. extract information from pages
 6. scroll and interact with page elements
 
-current page: ${currentTitle} (${currentUrl})
+current page: ${currentTitle}
 
 important: when filling out search forms or inputs, always follow up with submitting the form. use these strategies in order of preference:
 1. press enter key on the input field (most reliable)
@@ -381,7 +381,7 @@ when selectors fail or you're unsure about page structure, use analyze_page to g
           question = `what is the correct selector for the search/submit button? the failed selector was: ${failedAction.selector}`;
         } else {
           focus = 'navigation';
-          question = `what is the correct selector for clicking this element? the failed selector was: ${failedAction.selector}`;
+          question = `what is the correct selector for this clickable element? the failed selector was: ${failedAction.selector}`;
         }
       } else {
         return null; // no recovery for other action types
@@ -492,6 +492,8 @@ when selectors fail or you're unsure about page structure, use analyze_page to g
       });
 
       if (!response.ok) { // check if request failed
+        const errorText = await response.text(); // get error details
+        addLog('error', `openai api error ${response.status}: ${errorText}`); // log detailed error
         throw new Error(`openai api error: ${response.status}`); // throw error
       }
 

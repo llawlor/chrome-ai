@@ -199,7 +199,9 @@ async function analyzePage(focus, question) {
     htmlContent += 'NAVIGATION LINKS:\n'; // add links header
     links.forEach((link, i) => {
       if (i < 20) { // limit to first 20 links
-        htmlContent += `Link ${i + 1}: ${link.outerHTML}\n`; // add link html
+        const text = link.textContent?.trim() || ''; // get link text
+        const href = link.href || ''; // get link href
+        htmlContent += `Link ${i + 1}: text="${text}" href="${href}" ${link.outerHTML}\n`; // add link details
       }
     });
   } else { // general page analysis

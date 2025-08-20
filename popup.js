@@ -4,9 +4,16 @@ document.addEventListener('DOMContentLoaded', function() {
   const clearApiKeyBtn = document.getElementById('clearApiKey'); // get clear button element
   const apiKeyStatus = document.getElementById('apiKeyStatus'); // get status display element
   const status = document.getElementById('status'); // get general status element
+  const apiKeyLink = document.getElementById('apiKeyLink'); // get api key link element
+  const apiKeySection = document.getElementById('apiKeySection'); // get api key section element
 
   // load existing api key on popup open
   loadApiKey();
+
+  // toggle api key section visibility when link is clicked
+  apiKeyLink.addEventListener('click', function() {
+    apiKeySection.classList.toggle('hidden'); // toggle hidden class
+  });
 
   saveApiKeyBtn.addEventListener('click', function() {
     const apiKey = apiKeyInput.value.trim(); // get api key input value

@@ -90,13 +90,32 @@
       font-size: 12px;
       margin-top: 5px;
     }
+    
+    .api-key-link {
+      color: #007cba;
+      text-decoration: underline;
+      cursor: pointer;
+      font-size: 14px;
+      margin-bottom: 10px;
+      display: inline-block;
+    }
+    
+    .api-key-link:hover {
+      color: #005a87;
+    }
+    
+    .api-key-section.hidden {
+      display: none;
+    }
   </style>
 </head>
 <body>
   <div class="container">
     <h1>AI Prime</h1>
     
-    <div class="api-key-section">
+    <div id="apiKeyLink" class="api-key-link">API Key</div>
+    
+    <div class="api-key-section hidden" id="apiKeySection">
       <label for="apiKey">OpenAI API Key:</label>
       <input type="password" id="apiKey" placeholder="Enter your OpenAI API key">
       <div id="apiKeyStatus" class="api-key-stored"></div>

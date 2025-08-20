@@ -42,8 +42,16 @@ async function executeAction(action) {
 }
 
 async function clickElement(selector, expectedOutcome) {
-  // try multiple selector strategies if selector is an array
-  const selectors = Array.isArray(selector) ? selector : [selector]; // ensure array
+  // generate multiple selector strategies if single selector provided
+  let selectors = Array.isArray(selector) ? selector : [selector]; // ensure array
+  
+  // if single selector provided, generate fallback strategies
+  if (selectors.length === 1) { // check if only one selector
+    const originalSelector = selectors[0]; // get original selector
+    const fallbackSelectors = generateSelectorFallbacks(originalSelector); // generate fallbacks
+    selectors = [originalSelector, ...fallbackSelectors]; // combine selectors
+  }
+  
   const result = findElementWithStrategies(selectors); // find element with strategies
   
   if (!result) { // check if no element found
@@ -71,8 +79,16 @@ async function clickElement(selector, expectedOutcome) {
 }
 
 async function typeText(selector, text, expectedOutcome) {
-  // try multiple selector strategies if selector is an array
-  const selectors = Array.isArray(selector) ? selector : [selector]; // ensure array
+  // generate multiple selector strategies if single selector provided
+  let selectors = Array.isArray(selector) ? selector : [selector]; // ensure array
+  
+  // if single selector provided, generate fallback strategies
+  if (selectors.length === 1) { // check if only one selector
+    const originalSelector = selectors[0]; // get original selector
+    const fallbackSelectors = generateSelectorFallbacks(originalSelector); // generate fallbacks
+    selectors = [originalSelector, ...fallbackSelectors]; // combine selectors
+  }
+  
   const result = findElementWithStrategies(selectors); // find element with strategies
   
   if (!result) { // check if no element found
@@ -146,8 +162,16 @@ async function submitForm(selector) {
 }
 
 async function pressKey(selector, key, expectedOutcome) {
-  // try multiple selector strategies if selector is an array
-  const selectors = Array.isArray(selector) ? selector : [selector]; // ensure array
+  // generate multiple selector strategies if single selector provided
+  let selectors = Array.isArray(selector) ? selector : [selector]; // ensure array
+  
+  // if single selector provided, generate fallback strategies
+  if (selectors.length === 1) { // check if only one selector
+    const originalSelector = selectors[0]; // get original selector
+    const fallbackSelectors = generateSelectorFallbacks(originalSelector); // generate fallbacks
+    selectors = [originalSelector, ...fallbackSelectors]; // combine selectors
+  }
+  
   const result = findElementWithStrategies(selectors); // find element with strategies
   
   if (!result) { // check if no element found
@@ -297,6 +321,84 @@ async function analyzePage(focus, question) {
     buttons.forEach((button, i) => {
       if (i < 15) { // limit to first 15 buttons
         htmlContent += `Button ${i + 1}: ${button.outerHTML}\n`; // add button html
+      }
+    });
+  } else if (focus.toLowerCase().includes('search') || focus.toLowerCase().includes('navigation')) { // check if analyzing search or navigation
+    // find comprehensive search and navigation elements
+    const allInputs = document.querySelectorAll('input, textarea'); // find all inputs
+    const searchInputs = Array.from(allInputs).filter(input => 
+      input.type === 'search' || 
+      input.type === 'text' || 
+      input.name === 'q' ||
+      input.name === 'query' ||
+      input.name === 'search' ||
+      input.id && input.id.toLowerCase().includes('search') ||
+      input.className && input.className.toLowerCase().includes('search') ||
+      input.placeholder && input.placeholder.toLowerCase().includes('search') ||
+      input.getAttribute('aria-label') && input.getAttribute('aria-label').toLowerCase().includes('search') ||
+      input.getAttribute('title') && input.getAttribute('title').toLowerCase().includes('search')
+    ); // comprehensive search input detection
+    
+    const allButtons = document.querySelectorAll('button, input[type="submit"], input[type="button"]'); // find all buttons
+    const searchButtons = Array.from(allButtons).filter(button => 
+      button.type === 'submit' ||
+      button.name && (button.name.includes('btn') || button.name.includes('search')) ||
+      button.textContent && button.textContent.toLowerCase().includes('search') ||
+      button.getAttribute('aria-label') && button.getAttribute('aria-label').toLowerCase().includes('search') ||
+      button.className && button.className.toLowerCase().includes('search')
+    ); // comprehensive search button detection
+    
+    const allLinks = document.querySelectorAll('a[href]'); // find all links
+    const navigationLinks = Array.from(allLinks).filter(link => 
+      link.href && (
+        link.href.includes('image') ||
+        link.href.includes('video') ||
+        link.href.includes('news') ||
+        link.href.includes('shopping') ||
+        link.textContent && (
+          link.textContent.toLowerCase().includes('image') ||
+          link.textContent.toLowerCase().includes('video') ||
+          link.textContent.toLowerCase().includes('news') ||
+          link.textContent.toLowerCase().includes('shop')
+        )
+      )
+    ); // comprehensive navigation link detection
+    
+    htmlContent += 'ALL INPUTS:\\n'; // add all inputs header
+    allInputs.forEach((input, i) => {
+      if (i < 15) { // limit to first 15 inputs
+        htmlContent += `Input ${i + 1}: ${input.outerHTML}\\n`; // add input html
+      }
+    });
+    
+    htmlContent += '\\nSEARCH INPUTS:\\n'; // add search inputs header
+    searchInputs.forEach((input, i) => {
+      htmlContent += `Search Input ${i + 1}: ${input.outerHTML}\\n`; // add search input html
+    });
+    
+    htmlContent += '\\nALL BUTTONS:\\n'; // add all buttons header
+    allButtons.forEach((button, i) => {
+      if (i < 15) { // limit to first 15 buttons
+      htmlContent += `Button ${i + 1}: ${button.outerHTML}\\n`; // add button html
+      }
+    });
+    
+    htmlContent += '\\nSEARCH BUTTONS:\\n'; // add search buttons header
+    searchButtons.forEach((button, i) => {
+      htmlContent += `Search Button ${i + 1}: ${button.outerHTML}\\n`; // add search button html
+    });
+    
+    htmlContent += '\\nNAVIGATION LINKS:\\n'; // add navigation links header
+    navigationLinks.forEach((link, i) => {
+      if (i < 10) { // limit to first 10 navigation links
+        htmlContent += `Nav Link ${i + 1}: ${link.textContent.trim()} - ${link.outerHTML.substring(0, 300)}\\n`; // add link info
+      }
+    });
+    
+    htmlContent += '\\nALL LINKS (first 25):\\n'; // add all links header
+    allLinks.forEach((link, i) => {
+      if (i < 25 && link.textContent && link.textContent.trim()) { // limit to first 25 links with text
+        htmlContent += `Link ${i + 1}: "${link.textContent.trim()}" - ${link.outerHTML.substring(0, 200)}\\n`; // add link info
       }
     });
   } else if (focus.toLowerCase().includes('filter')) { // check if analyzing filters
@@ -477,6 +579,72 @@ function detectFormSubmission() {
       return false; // ignore errors
     }
   });
+}
+
+function generateSelectorFallbacks(originalSelector) {
+  // generate fallback selectors based on common patterns
+  const fallbacks = []; // initialize fallbacks array
+  
+  // if selector targets input with name="q", add common search input patterns
+  if (originalSelector.includes('name="q"') || originalSelector.includes("name='q'")) { // check for search input
+    fallbacks.push(
+      'input[type="search"]', // search type input
+      'input[type="text"][placeholder*="search" i]', // text input with search placeholder
+      'input[aria-label*="search" i]', // input with search aria-label
+      'input[title*="search" i]', // input with search title
+      'textarea[name="q"]', // textarea with name q
+      'input[name="query"]', // input with name query
+      'input[name="search"]', // input with name search
+      'input[id*="search" i]', // input with search in id
+      'input[class*="search" i]' // input with search in class
+    );
+  }
+  
+  // if selector targets links with href patterns, add common navigation patterns
+  if (originalSelector.includes('href*=')) { // check for href pattern
+    if (originalSelector.includes('tbm=isch') || originalSelector.includes('images')) { // check for images
+      fallbacks.push(
+        'a[href*="images"]', // links with images in href
+        'a[data-ved*="images"]', // links with images in data-ved
+        'a:contains("Images")', // links containing "Images" text
+        'a[aria-label*="images" i]', // links with images in aria-label
+        'nav a[href*="image"]', // navigation links with image
+        'button[data-ved*="images"]' // buttons with images data
+      );
+    }
+  }
+  
+  // if selector targets buttons, add common button patterns
+  if (originalSelector.includes('button') || originalSelector.includes('input[type="submit"]')) { // check for buttons
+    fallbacks.push(
+      'button[type="submit"]', // submit buttons
+      'input[type="submit"]', // submit inputs
+      'button[aria-label*="search" i]', // buttons with search aria-label
+      'button:contains("Search")', // buttons containing "Search"
+      'input[name*="btn"]', // inputs with btn in name
+      'button[class*="search" i]', // buttons with search in class
+      'button[id*="search" i]' // buttons with search in id
+    );
+  }
+  
+  // add generic fallbacks based on selector type
+  if (originalSelector.startsWith('#')) { // check for id selector
+    const id = originalSelector.substring(1); // extract id
+    fallbacks.push(
+      `[id="${id}"]`, // attribute selector for id
+      `[id*="${id}"]`, // partial id match
+      `*[id^="${id}"]` // id starts with
+    );
+  } else if (originalSelector.startsWith('.')) { // check for class selector
+    const className = originalSelector.substring(1); // extract class
+    fallbacks.push(
+      `[class*="${className}"]`, // partial class match
+      `*[class^="${className}"]`, // class starts with
+      `*[class$="${className}"]` // class ends with
+    );
+  }
+  
+  return fallbacks; // return fallback selectors
 }
 
 async function waitSeconds(seconds) {

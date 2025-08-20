@@ -432,20 +432,17 @@ when selectors fail or you're unsure about page structure, use analyze_page to g
       let focus = 'general';
       let question = '';
 
-      if (failedAction.type === 'type' || failedAction.type === 'press_key') { // check if input action
-        focus = 'search form';
-        question = `what is the correct selector for the main search input field? the failed selector was: ${failedAction.selector}`;
+      if (failedAction.type === 'type' || failedAction.type === 'press_key') { // check if input-related action
+        focus = 'search form'; // focus on search forms
+        question = `what is the correct css selector for the search input field? the failed selector was: ${failedAction.selector}`; // ask for input selector
       } else if (failedAction.type === 'click') { // check if click action
-        if (failedAction.selector.includes('search') || failedAction.selector.includes('submit')) { // check if search related
-          focus = 'search form';
-          question = `what is the correct selector for the search/submit button? the failed selector was: ${failedAction.selector}`;
-        } else {
-          focus = 'navigation';
-          question = `what is the correct selector for this clickable element? the failed selector was: ${failedAction.selector}`;
-        }
+        focus = 'navigation'; // focus on navigation
+        question = `what is the correct css selector for clickable elements like buttons or links? the failed selector was: ${failedAction.selector}`; // ask for click selector
       } else {
-        return null; // no recovery for other action types
+        focus = 'general'; // general focus
+        question = `what is the correct css selector for this element? the failed selector was: ${failedAction.selector}`; // ask for general selector
       }
+      return null; // no recovery for other action types
 
       // get page analysis
       const [tab] = await chrome.tabs.query({active: true, currentWindow: true});

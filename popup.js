@@ -291,12 +291,17 @@ when selectors fail or you're unsure about page structure, use analyze_page to g
       // execute actions via content script
       currentActions = actions; // store actions for pause/resume
       currentActionIndex = 0; // reset action index
-      await executeActions(actions); // execute the actions
+      await executeActions(actions); // execute actions
+
+      // clear input and show completion message
+      instructionInput.value = ''; // clear instruction input
+      showTaskStatus('Task completed - waiting for next task', 'completed'); // show completion message
+      addLog('system', 'task completed - ready for next instruction'); // log completion
 
     } catch (error) {
       console.error('task execution error:', error); // log error
-      const errorMsg = `Error: ${error.message}`; // create error message
-      showTaskStatus(errorMsg, 'error'); // show error status
+      const errorMsg = `Error executing task: ${error.message}`; // create error message
+      showTaskStatus(errorMsg, 'error'); // show error
       addLog('error', errorMsg); // log error
     } finally {
       submitBtn.disabled = false; // re-enable submit button

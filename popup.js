@@ -218,10 +218,7 @@ important: when filling out search forms or inputs, always follow up with submit
 2. click the submit/search button if enter doesn't work
 3. submit the parent form element
 
-for amazon specifically:
-- search input selector: #twotabsearchtextbox
-- always use press_key with "Enter" on the search input instead of clicking submit button
-- search results selector: [data-component-type="s-search-result"]
+if you cannot find the right selectors or actions fail, use the "analyze_page" action to get page structure and ask for guidance.
 
 respond with json containing an array of actions to perform:
 {
@@ -233,17 +230,13 @@ respond with json containing an array of actions to perform:
     {"type": "submit", "selector": "#form-id"},
     {"type": "scroll", "direction": "down"},
     {"type": "extract", "selector": ".content", "description": "what to extract"},
+    {"type": "analyze_page", "focus": "search form", "question": "what selector should I use for the search button?"},
     {"type": "wait", "seconds": 2},
     {"type": "complete", "message": "task completed successfully"}
   ]
 }
 
-example for amazon search:
-1. navigate to amazon.com
-2. type search term in #twotabsearchtextbox
-3. press enter on the search input (preferred method)
-4. wait for results to load
-5. extract results using [data-component-type="s-search-result"]`
+when selectors fail or you're unsure about page structure, use analyze_page to get relevant HTML and determine correct selectors.`
           },
           {
             role: 'user',
@@ -327,6 +320,16 @@ example for amazon search:
           showTaskStatus(action.message, 'completed'); // show completion message
           addLog('action', `task completed: ${action.message}`); // log completion
           break;
+        } else if (action.type === 'analyze_page') { // check if page analysis action
+          const response = await chrome.tabs.sendMessage(tab.id, {action: action}); // send message to content script
+          if (response && response.success) { // check if analysis succeeded
+            addLog('action', `page analysis: ${response.result}`); // log analysis result
+            // send analysis back to openai for selector guidance
+            await requestSelectorGuidance(response.result, action.question); // request guidance
+          } else if (response && !response.success) { // check if analysis failed
+            addLog('error', `page analysis failed: ${response.error}`); // log error
+          }
+          await new Promise(resolve => setTimeout(resolve, 1000)); // wait between actions
         } else {
           // send other actions to content script
           const response = await chrome.tabs.sendMessage(tab.id, {action: action}); // send message to content script
@@ -344,6 +347,61 @@ example for amazon search:
         addLog('error', errorMsg); // log error
         break;
       }
+    }
+  }
+
+  async function requestSelectorGuidance(pageAnalysis, question) {
+    try {
+      addLog('request', `requesting selector guidance: ${question}`); // log guidance request
+      
+      // get api key from storage
+      const result = await new Promise((resolve) => {
+        chrome.storage.local.get(['openai_api_key'], resolve);
+      });
+      
+      if (!result.openai_api_key) { // check if api key exists
+        addLog('error', 'API key not found for selector guidance'); // log error
+        return;
+      }
+
+      const guidanceRequest = {
+        model: 'gpt-4',
+        messages: [
+          {
+            role: 'system',
+            content: `you are analyzing html structure to find correct css selectors. based on the provided html, answer the specific question about what selector to use. respond with just the selector or a brief explanation of what to do.`
+          },
+          {
+            role: 'user',
+            content: `${question}\n\nHTML STRUCTURE:\n${pageAnalysis}`
+          }
+        ],
+        temperature: 0.3,
+        max_tokens: 200
+      }; // create guidance request
+      
+      addLog('request', `openai guidance request: ${JSON.stringify(guidanceRequest, null, 2)}`); // log guidance request
+      
+      const response = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${result.openai_api_key}`
+        },
+        body: JSON.stringify(guidanceRequest)
+      });
+
+      if (!response.ok) { // check if request failed
+        throw new Error(`openai api error: ${response.status}`); // throw error
+      }
+
+      const data = await response.json(); // parse response
+      const guidance = data.choices[0].message.content; // get guidance
+      addLog('response', `selector guidance: ${guidance}`); // log guidance
+      
+    } catch (error) {
+      console.error('selector guidance error:', error); // log error
+      addLog('error', `selector guidance failed: ${error.message}`); // log error
     }
   }
 

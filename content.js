@@ -32,6 +32,8 @@ async function executeAction(action) {
       return await scrollPage(action.direction); // scroll page
     case 'extract':
       return await extractContent(action.selector, action.description); // extract content
+    case 'analyze_page':
+      return await analyzePage(action.focus, action.question); // analyze page structure
     case 'wait':
       return await waitSeconds(action.seconds); // wait specified seconds
     default:
@@ -150,6 +152,57 @@ async function pressKey(selector, key) {
   element.dispatchEvent(keyupEvent); // dispatch keyup event
   
   return `pressed ${key} on element: ${selector}`; // return success message
+}
+
+async function analyzePage(focus, question) {
+  let htmlContent = ''; // initialize html content
+  
+  if (focus === 'search form') { // check if analyzing search form
+    // find all forms and inputs
+    const forms = document.querySelectorAll('form'); // find all forms
+    const inputs = document.querySelectorAll('input[type="search"], input[type="text"], input[placeholder*="search" i]'); // find search inputs
+    const buttons = document.querySelectorAll('button[type="submit"], input[type="submit"], button[class*="search" i], button[aria-label*="search" i]'); // find submit buttons
+    
+    htmlContent += 'FORMS:\n'; // add forms header
+    forms.forEach((form, i) => {
+      htmlContent += `Form ${i + 1}: ${form.outerHTML.substring(0, 500)}...\n\n`; // add form html (truncated)
+    });
+    
+    htmlContent += 'SEARCH INPUTS:\n'; // add inputs header
+    inputs.forEach((input, i) => {
+      htmlContent += `Input ${i + 1}: ${input.outerHTML}\n`; // add input html
+    });
+    
+    htmlContent += 'SUBMIT BUTTONS:\n'; // add buttons header
+    buttons.forEach((button, i) => {
+      htmlContent += `Button ${i + 1}: ${button.outerHTML}\n`; // add button html
+    });
+  } else if (focus === 'navigation') { // check if analyzing navigation
+    const links = document.querySelectorAll('a, nav a, [role="navigation"] a'); // find navigation links
+    htmlContent += 'NAVIGATION LINKS:\n'; // add links header
+    links.forEach((link, i) => {
+      if (i < 20) { // limit to first 20 links
+        htmlContent += `Link ${i + 1}: ${link.outerHTML}\n`; // add link html
+      }
+    });
+  } else { // general page analysis
+    // get page structure overview
+    const headings = document.querySelectorAll('h1, h2, h3'); // find headings
+    const mainContent = document.querySelector('main, [role="main"], .main-content'); // find main content
+    
+    htmlContent += 'PAGE HEADINGS:\n'; // add headings header
+    headings.forEach((heading, i) => {
+      htmlContent += `${heading.tagName}: ${heading.textContent.trim()}\n`; // add heading text
+    });
+    
+    if (mainContent) { // check if main content found
+      htmlContent += '\nMAIN CONTENT STRUCTURE:\n'; // add main content header
+      htmlContent += mainContent.outerHTML.substring(0, 1000) + '...\n'; // add main content html (truncated)
+    }
+  }
+  
+  // send html content back to popup for openai analysis
+  return `page analysis requested: ${question}\n\nHTML STRUCTURE:\n${htmlContent}`; // return analysis request
 }
 
 async function waitSeconds(seconds) {

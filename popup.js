@@ -148,10 +148,16 @@ document.addEventListener('DOMContentLoaded', function() {
 1. navigate to websites by providing urls
 2. click on links and buttons by providing css selectors
 3. fill out forms by providing selectors and values
-4. extract information from pages
-5. scroll and interact with page elements
+4. submit forms by clicking submit buttons or pressing enter
+5. extract information from pages
+6. scroll and interact with page elements
 
 current page: ${currentTitle} (${currentUrl})
+
+important: when filling out search forms or inputs, always follow up with submitting the form by either:
+- clicking the search/submit button (preferred)
+- pressing enter key on the input field
+- submitting the form element
 
 respond with json containing an array of actions to perform:
 {
@@ -159,12 +165,20 @@ respond with json containing an array of actions to perform:
     {"type": "navigate", "url": "https://example.com"},
     {"type": "click", "selector": ".button-class"},
     {"type": "type", "selector": "#input-id", "text": "text to type"},
+    {"type": "submit", "selector": "#form-id"},
+    {"type": "press_key", "selector": "#input-id", "key": "Enter"},
     {"type": "scroll", "direction": "down"},
     {"type": "extract", "selector": ".content", "description": "what to extract"},
     {"type": "wait", "seconds": 2},
     {"type": "complete", "message": "task completed successfully"}
   ]
-}`
+}
+
+example for amazon search:
+1. navigate to amazon.com
+2. type search term in search box
+3. click search button or press enter to execute search
+4. extract results or complete task`
             },
             {
               role: 'user',

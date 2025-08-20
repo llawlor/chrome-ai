@@ -17,6 +17,10 @@ async function executeAction(action) {
       return await clickElement(action.selector); // click element
     case 'type':
       return await typeText(action.selector, action.text); // type text
+    case 'submit':
+      return await submitForm(action.selector); // submit form
+    case 'press_key':
+      return await pressKey(action.selector, action.key); // press key
     case 'scroll':
       return await scrollPage(action.direction); // scroll page
     case 'extract':
@@ -83,6 +87,62 @@ async function extractContent(selector, description) {
   
   const content = Array.from(elements).map(el => el.textContent.trim()).join('\n'); // extract text content
   return `extracted content (${description}): ${content}`; // return extracted content
+}
+
+async function submitForm(selector) {
+  const element = document.querySelector(selector); // find element by selector
+  if (!element) { // check if element exists
+    throw new Error(`element not found: ${selector}`); // throw error
+  }
+  
+  // check if element is a form
+  if (element.tagName.toLowerCase() === 'form') { // check if form element
+    element.submit(); // submit form
+    return `submitted form: ${selector}`; // return success message
+  } else {
+    // try to find parent form
+    const form = element.closest('form'); // find closest form
+    if (form) { // check if form found
+      form.submit(); // submit form
+      return `submitted form containing: ${selector}`; // return success message
+    } else {
+      throw new Error(`no form found for element: ${selector}`); // throw error
+    }
+  }
+}
+
+async function pressKey(selector, key) {
+  const element = document.querySelector(selector); // find element by selector
+  if (!element) { // check if element exists
+    throw new Error(`element not found: ${selector}`); // throw error
+  }
+  
+  element.scrollIntoView({behavior: 'smooth', block: 'center'}); // scroll element into view
+  await new Promise(resolve => setTimeout(resolve, 500)); // wait for scroll
+  
+  element.focus(); // focus on element
+  
+  // create and dispatch keydown event
+  const keydownEvent = new KeyboardEvent('keydown', {
+    key: key,
+    code: key === 'Enter' ? 'Enter' : key,
+    keyCode: key === 'Enter' ? 13 : key.charCodeAt(0),
+    which: key === 'Enter' ? 13 : key.charCodeAt(0),
+    bubbles: true
+  });
+  element.dispatchEvent(keydownEvent); // dispatch keydown event
+  
+  // create and dispatch keyup event
+  const keyupEvent = new KeyboardEvent('keyup', {
+    key: key,
+    code: key === 'Enter' ? 'Enter' : key,
+    keyCode: key === 'Enter' ? 13 : key.charCodeAt(0),
+    which: key === 'Enter' ? 13 : key.charCodeAt(0),
+    bubbles: true
+  });
+  element.dispatchEvent(keyupEvent); // dispatch keyup event
+  
+  return `pressed ${key} on element: ${selector}`; // return success message
 }
 
 async function waitSeconds(seconds) {

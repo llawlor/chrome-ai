@@ -158,24 +158,41 @@ async function analyzePage(focus, question) {
   let htmlContent = ''; // initialize html content
   
   if (focus === 'search form') { // check if analyzing search form
-    // find all forms and inputs
+    // find all forms and inputs with broader selectors
     const forms = document.querySelectorAll('form'); // find all forms
-    const inputs = document.querySelectorAll('input[type="search"], input[type="text"], input[placeholder*="search" i]'); // find search inputs
-    const buttons = document.querySelectorAll('button[type="submit"], input[type="submit"], button[class*="search" i], button[aria-label*="search" i]'); // find submit buttons
+    const allInputs = document.querySelectorAll('input, textarea'); // find all input elements
+    const searchInputs = Array.from(allInputs).filter(input => 
+      input.type === 'search' || 
+      input.type === 'text' || 
+      input.name === 'q' ||
+      input.placeholder?.toLowerCase().includes('search') ||
+      input.getAttribute('aria-label')?.toLowerCase().includes('search') ||
+      input.getAttribute('title')?.toLowerCase().includes('search')
+    ); // filter for search-related inputs
+    const buttons = document.querySelectorAll('button, input[type="submit"], input[type="button"]'); // find all buttons
     
     htmlContent += 'FORMS:\n'; // add forms header
     forms.forEach((form, i) => {
-      htmlContent += `Form ${i + 1}: ${form.outerHTML.substring(0, 500)}...\n\n`; // add form html (truncated)
+      htmlContent += `Form ${i + 1}: ${form.outerHTML.substring(0, 800)}\n\n`; // add form html (less truncated)
     });
     
-    htmlContent += 'SEARCH INPUTS:\n'; // add inputs header
-    inputs.forEach((input, i) => {
-      htmlContent += `Input ${i + 1}: ${input.outerHTML}\n`; // add input html
+    htmlContent += 'ALL INPUTS:\n'; // add all inputs header
+    allInputs.forEach((input, i) => {
+      if (i < 10) { // limit to first 10 inputs
+        htmlContent += `Input ${i + 1}: ${input.outerHTML}\n`; // add input html
+      }
     });
     
-    htmlContent += 'SUBMIT BUTTONS:\n'; // add buttons header
+    htmlContent += 'SEARCH-RELATED INPUTS:\n'; // add search inputs header
+    searchInputs.forEach((input, i) => {
+      htmlContent += `SearchInput ${i + 1}: ${input.outerHTML}\n`; // add search input html
+    });
+    
+    htmlContent += 'BUTTONS:\n'; // add buttons header
     buttons.forEach((button, i) => {
-      htmlContent += `Button ${i + 1}: ${button.outerHTML}\n`; // add button html
+      if (i < 10) { // limit to first 10 buttons
+        htmlContent += `Button ${i + 1}: ${button.outerHTML}\n`; // add button html
+      }
     });
   } else if (focus === 'navigation') { // check if analyzing navigation
     const links = document.querySelectorAll('a, nav a, [role="navigation"] a'); // find navigation links

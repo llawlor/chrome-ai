@@ -402,15 +402,45 @@ when selectors fail or you're unsure about page structure, use analyze_page to g
         return null;
       }
       
-      // extract selector from guidance (look for css selector patterns)
-      const selectorMatch = guidance.match(/[#.]?[\w-]+(?:\[[\w="'-]+\])?(?:[#.][\w-]+)*/); // match selector pattern
-      if (!selectorMatch) { // check if no selector found
+      // extract selector from guidance - handle various response formats
+      let extractedSelector = null;
+      
+      // try to find a css selector in the response
+      const selectorPatterns = [
+        /([#.][\w-]+(?:\[[\w="'-\s]+\])?)/g, // id/class selectors with attributes
+        /(input\[[\w="'-\s]+\])/g, // input with attributes
+        /(textarea\[[\w="'-\s]+\])/g, // textarea with attributes
+        /(button\[[\w="'-\s]+\])/g, // button with attributes
+        /([a-zA-Z]+\[[\w="'-\s]+\])/g, // any element with attributes
+        /(#[\w-]+)/g, // id selectors
+        /(\.[\w-]+)/g // class selectors
+      ];
+      
+      for (const pattern of selectorPatterns) {
+        const matches = guidance.match(pattern);
+        if (matches && matches.length > 0) {
+          extractedSelector = matches[0].trim();
+          break;
+        }
+      }
+      
+      // if no selector pattern found, check if the response itself looks like a selector
+      if (!extractedSelector && guidance.length < 100) {
+        const trimmed = guidance.trim();
+        if (trimmed.match(/^[#.]?[\w-]+(\[[\w="'-\s]+\])?$/)) {
+          extractedSelector = trimmed;
+        }
+      }
+      
+      if (!extractedSelector) { // check if no selector found
+        addLog('error', `could not extract selector from guidance: ${guidance}`);
         return null;
       }
       
       // create new action with updated selector
       const newAction = {...failedAction}; // copy failed action
-      newAction.selector = selectorMatch[0]; // update selector
+      newAction.selector = extractedSelector; // update selector
+      addLog('action', `extracted selector for retry: ${extractedSelector}`);
       return newAction;
       
     } catch (error) {

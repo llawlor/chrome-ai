@@ -1,6 +1,9 @@
 // content script - handles web automation actions from popup
 console.log('content script loaded'); // log when content script loads
 
+// track url visits for data collection
+trackUrlVisit();
+
 // listen for messages from popup
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action) { // check if action is provided
@@ -650,4 +653,58 @@ function generateSelectorFallbacks(originalSelector) {
 async function waitSeconds(seconds) {
   await new Promise(resolve => setTimeout(resolve, seconds * 1000)); // wait specified seconds
   return `waited ${seconds} seconds`; // return success message
+}
+
+async function trackUrlVisit() {
+  try {
+    // get current task id from storage
+    const result = await new Promise((resolve) => {
+      chrome.storage.local.get(['current_task_id'], resolve);
+    });
+    
+    const taskId = result.current_task_id; // get task id
+    if (!taskId) return; // no active task
+    
+    // get current task data
+    const taskResult = await new Promise((resolve) => {
+      chrome.storage.local.get([`task_data_${taskId}`], resolve);
+    });
+    
+    const taskData = taskResult[`task_data_${taskId}`]; // get task data
+    if (!taskData) return; // no task data found
+    
+    const currentUrl = window.location.href; // get current url
+    const timestamp = new Date().toLocaleTimeString(); // get timestamp
+    
+    // check if url already exists to avoid duplicates
+    const urlExists = taskData.urls.some(urlData => urlData.url === currentUrl); // check for duplicate
+    if (urlExists) return; // url already tracked
+    
+    // add new url to task data
+    taskData.urls.push({
+      url: currentUrl,
+      timestamp: timestamp,
+      title: document.title || 'untitled page'
+    }); // add url data
+    
+    // save updated task data
+    await new Promise((resolve) => {
+      chrome.storage.local.set({[`task_data_${taskId}`]: taskData}, resolve);
+    });
+    
+    // update data collection tab if it exists
+    try {
+      await chrome.tabs.sendMessage(taskData.dataTabId, {
+        type: 'UPDATE_TASK_DATA',
+        taskData: taskData
+      }); // send update to data tab
+    } catch (error) {
+      console.log('could not update data collection tab:', error.message); // log error
+    }
+    
+    console.log('tracked url visit:', currentUrl); // log url tracking
+    
+  } catch (error) {
+    console.log('error tracking url visit:', error.message); // log error
+  }
 }

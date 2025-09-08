@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>AI Prime - Task Data Collection</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        
+        .container {
+            background: white;
+            border-radius: 8px;
+            padding: 30px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        
+        h1 {
+            color: #333;
+            margin-bottom: 20px;
+            border-bottom: 2px solid #007cba;
+            padding-bottom: 10px;
+        }
+        
+        .query-section {
+            background: #e3f2fd;
+            border-left: 4px solid #2196f3;
+            padding: 15px;
+            margin-bottom: 30px;
+            border-radius: 4px;
+        }
+        
+        .query-label {
+            font-weight: bold;
+            color: #1976d2;
+            margin-bottom: 8px;
+        }
+        
+        .query-text {
+            font-size: 16px;
+            line-height: 1.5;
+            color: #333;
+        }
+        
+        .urls-section {
+            margin-top: 30px;
+        }
+        
+        .urls-header {
+            font-size: 18px;
+            font-weight: bold;
+            color: #333;
+            margin-bottom: 15px;
+            border-bottom: 1px solid #ddd;
+            padding-bottom: 8px;
+        }
+        
+        .url-entry {
+            background: #f8f9fa;
+            border: 1px solid #e9ecef;
+            border-radius: 4px;
+            padding: 12px;
+            margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        
+        .url-link {
+            color: #007cba;
+            text-decoration: none;
+            font-weight: 500;
+            flex-grow: 1;
+            margin-right: 15px;
+        }
+        
+        .url-link:hover {
+            text-decoration: underline;
+        }
+        
+        .url-timestamp {
+            color: #666;
+            font-size: 12px;
+            white-space: nowrap;
+        }
+        
+        .stats {
+            background: #fff3cd;
+            border: 1px solid #ffeaa7;
+            border-radius: 4px;
+            padding: 15px;
+            margin-bottom: 20px;
+        }
+        
+        .stats-item {
+            display: inline-block;
+            margin-right: 20px;
+            font-weight: bold;
+        }
+        
+        .no-urls {
+            color: #666;
+            font-style: italic;
+            text-align: center;
+            padding: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🤖 AI Prime - Task Data Collection</h1>
+        
+        <div class="query-section">
+            <div class="query-label">User Query:</div>
+            <div class="query-text" id="queryText">Loading...</div>
+        </div>
+        
+        <div class="stats" id="statsSection">
+            <span class="stats-item">📊 Total URLs Visited: <span id="urlCount">0</span></span>
+            <span class="stats-item">⏰ Task Started: <span id="startTime">-</span></span>
+        </div>
+        
+        <div class="urls-section">
+            <div class="urls-header">🌐 Visited URLs</div>
+            <div id="urlsList">
+                <div class="no-urls">No URLs visited yet...</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // get task id from url parameters
+        const urlParams = new URLSearchParams(window.location.search);
+        const taskId = urlParams.get('taskId') || 'default';
+        
+        // load initial data
+        loadTaskData();
+        
+        // listen for updates from extension
+        window.addEventListener('message', function(event) {
+            if (event.data.type === 'UPDATE_TASK_DATA') {
+                updateDisplay(event.data.taskData);
+            }
+        });
+        
+        async function loadTaskData() {
+            try {
+                // try to get data from chrome storage if available
+                if (typeof chrome !== 'undefined' && chrome.storage) {
+                    chrome.storage.local.get([`task_data_${taskId}`], function(result) {
+                        const taskData = result[`task_data_${taskId}`];
+                        if (taskData) {
+                            updateDisplay(taskData);
+                        }
+                    });
+                }
+            } catch (error) {
+                console.log('chrome storage not available, using local storage');
+            }
+        }
+        
+        function updateDisplay(taskData) {
+            if (!taskData) return;
+            
+            // update query
+            document.getElementById('queryText').textContent = taskData.query || 'No query provided';
+            
+            // update stats
+            document.getElementById('urlCount').textContent = taskData.urls ? taskData.urls.length : 0;
+            document.getElementById('startTime').textContent = taskData.startTime || '-';
+            
+            // update urls list
+            const urlsList = document.getElementById('urlsList');
+            if (taskData.urls && taskData.urls.length > 0) {
+                urlsList.innerHTML = taskData.urls.map(urlData => `
+                    <div class="url-entry">
+                        <a href="${urlData.url}" target="_blank" class="url-link">${urlData.url}</a>
+                        <span class="url-timestamp">${urlData.timestamp}</span>
+                    </div>
+                `).join('');
+            } else {
+                urlsList.innerHTML = '<div class="no-urls">No URLs visited yet...</div>';
+            }
+        }
+        
+        // expose function for extension to call
+        window.updateTaskData = updateDisplay;
+    </script>
+</body>
+</html>

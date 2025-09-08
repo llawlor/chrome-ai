@@ -220,6 +220,27 @@ document.addEventListener('DOMContentLoaded', function() {
       showTaskStatus('Processing your request...', 'working'); // show working status
       addLog('request', `user instruction: ${instruction}`); // log user instruction
 
+      // create data collection tab
+      const taskId = Date.now().toString(); // generate unique task id
+      const dataCollectionUrl = chrome.runtime.getURL(`data-collection.html?taskId=${taskId}`); // get extension url
+      const dataTab = await chrome.tabs.create({ url: dataCollectionUrl }); // create new tab
+      
+      // initialize task data
+      const taskData = {
+        taskId: taskId,
+        query: instruction,
+        startTime: new Date().toLocaleString(),
+        urls: [],
+        dataTabId: dataTab.id
+      };
+      
+      // save task data to storage
+      await new Promise((resolve) => {
+        chrome.storage.local.set({[`task_data_${taskId}`]: taskData, 'current_task_id': taskId}, resolve);
+      });
+      
+      addLog('system', `created data collection tab (id: ${dataTab.id})`); // log tab creation
+
       // get api key from storage
       const result = await new Promise((resolve) => {
         chrome.storage.local.get(['openai_api_key'], resolve);
@@ -405,6 +426,9 @@ when selectors fail or you're unsure about page structure, use analyze_page to g
           } catch (reinjectError) {
             addLog('system', `content script reinject failed: ${reinjectError.message}`); // log reinject failure
           }
+          
+          // track navigation in data collection
+          await trackNavigationInDataCollection(action.url); // track navigation
         } else if (action.type === 'complete') { // check if completion action
           // only show completion if no previous errors occurred
           const hasErrors = document.querySelectorAll('.log-entry.error').length > 0; // check for error logs
@@ -716,6 +740,58 @@ when selectors fail or you're unsure about page structure, use analyze_page to g
 
     } catch (error) {
       console.error('failed to clear persistent logs:', error); // log error
+    }
+  }
+
+  async function trackNavigationInDataCollection(url) {
+    try {
+      // get current task id
+      const result = await new Promise((resolve) => {
+        chrome.storage.local.get(['current_task_id'], resolve);
+      });
+      
+      const taskId = result.current_task_id; // get task id
+      if (!taskId) return; // no active task
+      
+      // get current task data
+      const taskResult = await new Promise((resolve) => {
+        chrome.storage.local.get([`task_data_${taskId}`], resolve);
+      });
+      
+      const taskData = taskResult[`task_data_${taskId}`]; // get task data
+      if (!taskData) return; // no task data found
+      
+      const timestamp = new Date().toLocaleTimeString(); // get timestamp
+      
+      // check if url already exists to avoid duplicates
+      const urlExists = taskData.urls.some(urlData => urlData.url === url); // check for duplicate
+      if (urlExists) return; // url already tracked
+      
+      // add new url to task data
+      taskData.urls.push({
+        url: url,
+        timestamp: timestamp,
+        title: 'navigated to page'
+      }); // add url data
+      
+      // save updated task data
+      await new Promise((resolve) => {
+        chrome.storage.local.set({[`task_data_${taskId}`]: taskData}, resolve);
+      });
+      
+      // update data collection tab if it exists
+      try {
+        await chrome.tabs.sendMessage(taskData.dataTabId, {
+          type: 'UPDATE_TASK_DATA',
+          taskData: taskData
+        }); // send update to data tab
+        addLog('system', `tracked navigation to: ${url}`); // log tracking
+      } catch (error) {
+        addLog('system', `could not update data collection tab: ${error.message}`); // log error
+      }
+      
+    } catch (error) {
+      addLog('error', `error tracking navigation: ${error.message}`); // log error
     }
   }
 

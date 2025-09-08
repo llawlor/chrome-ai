@@ -147,6 +147,15 @@
             }
         });
         
+        // listen for chrome extension messages
+        if (typeof chrome !== 'undefined' && chrome.runtime) {
+            chrome.runtime.onMessage.addListener(function(message, sender, sendResponse) {
+                if (message.type === 'UPDATE_TASK_DATA') {
+                    updateDisplay(message.taskData);
+                }
+            });
+        }
+        
         async function loadTaskData() {
             try {
                 // try to get data from chrome storage if available

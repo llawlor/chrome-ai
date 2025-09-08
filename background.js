@@ -50,10 +50,29 @@ async function startTask(instruction, taskId) {
       return;
     }
 
-    // get current tab info
-    const [tab] = await chrome.tabs.query({active: true, currentWindow: true}); // get active tab
-    const currentUrl = tab.url; // get current tab url
-    const currentTitle = tab.title; // get current tab title
+    // get task data to find data collection tab
+    const taskResult = await chrome.storage.local.get([`task_data_${taskId}`]); // get task data
+    const taskData = taskResult[`task_data_${taskId}`]; // get task data
+    const dataTabId = taskData ? taskData.dataTabId : null; // get data tab id
+
+    // get current tab info (but exclude data collection tab)
+    const tabs = await chrome.tabs.query({active: true, currentWindow: true}); // get active tabs
+    let workingTab = tabs[0]; // get first tab
+    
+    // if current tab is data collection tab, create new working tab
+    if (workingTab.id === dataTabId) { // check if current tab is data tab
+      workingTab = await chrome.tabs.create({url: 'about:blank'}); // create new working tab
+      await chrome.tabs.update(workingTab.id, {active: true}); // make it active
+    }
+    
+    // store working tab id in task data
+    if (taskData) { // check if task data exists
+      taskData.workingTabId = workingTab.id; // store working tab id
+      await chrome.storage.local.set({[`task_data_${taskId}`]: taskData}); // save updated data
+    }
+    
+    const currentUrl = workingTab.url; // get current tab url
+    const currentTitle = workingTab.title; // get current tab title
     
     // prepare openai request
     const requestBody = {
@@ -176,7 +195,27 @@ async function executeActionsFromIndex(actions, startIndex) {
     
     try {
       await new Promise(resolve => setTimeout(resolve, 300)); // wait between actions
-      const [tab] = await chrome.tabs.query({active: true, currentWindow: true}); // get active tab
+      
+      // get working tab id from task data
+      const taskResult = await chrome.storage.local.get([`task_data_${currentTask.taskId}`]); // get task data
+      const taskData = taskResult[`task_data_${currentTask.taskId}`]; // get task data
+      const workingTabId = taskData ? taskData.workingTabId : null; // get working tab id
+      
+      // use working tab if available, otherwise get active tab
+      let tab;
+      if (workingTabId) { // check if working tab id exists
+        try {
+          tab = await chrome.tabs.get(workingTabId); // get working tab
+        } catch (error) {
+          // working tab was closed, create new one
+          tab = await chrome.tabs.create({url: 'about:blank'}); // create new tab
+          taskData.workingTabId = tab.id; // update working tab id
+          await chrome.storage.local.set({[`task_data_${currentTask.taskId}`]: taskData}); // save updated data
+        }
+      } else {
+        const tabs = await chrome.tabs.query({active: true, currentWindow: true}); // get active tabs
+        tab = tabs[0]; // get first tab
+      }
 
       if (action.type === 'navigate') { // check if navigation action
         await chrome.tabs.update(tab.id, {url: action.url}); // navigate to url

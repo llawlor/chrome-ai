@@ -261,7 +261,7 @@ document.addEventListener('DOMContentLoaded', function() {
       // create data collection tab
       const taskId = Date.now().toString(); // generate unique task id
       const dataCollectionUrl = chrome.runtime.getURL(`data-collection.html?taskId=${taskId}`); // get extension url
-      const dataTab = await chrome.tabs.create({ url: dataCollectionUrl }); // create new tab
+      const dataTab = await chrome.tabs.create({ url: dataCollectionUrl, active: false }); // create new tab but don't activate it
       
       // initialize task data
       const taskData = {
@@ -269,7 +269,8 @@ document.addEventListener('DOMContentLoaded', function() {
         query: instruction,
         startTime: new Date().toLocaleString(),
         urls: [],
-        dataTabId: dataTab.id
+        dataTabId: dataTab.id,
+        workingTabId: null // will be set by background script
       };
       
       // save task data to storage

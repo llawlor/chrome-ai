@@ -6,11 +6,12 @@
   "permissions": [
     "storage",
     "tabs",
-    "activeTab"
+    "activeTab",
+    "scripting"
   ],
   "web_accessible_resources": [
     {
-      "resources": ["data-collection.html"],
+      "resources": ["data-collection.html", "data-collection.js"],
       "matches": ["<all_urls>"]
     }
   ],

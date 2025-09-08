@@ -220,6 +220,11 @@ async function executeActionsFromIndex(actions, startIndex) {
       if (action.type === 'navigate') { // check if navigation action
         await chrome.tabs.update(tab.id, {url: action.url}); // navigate to url
         
+        // track navigation in data collection
+        setTimeout(() => {
+          trackNavigationInDataCollection(action.url); // track navigation after delay
+        }, 1000); // wait for page to load
+        
         // wait for page to load and reinject content script
         await new Promise(resolve => setTimeout(resolve, 2000)); // wait for navigation
         
@@ -234,11 +239,6 @@ async function executeActionsFromIndex(actions, startIndex) {
         } catch (reinjectError) {
           console.log('content script reinject failed:', reinjectError.message); // log reinject failure
         }
-        
-        // track navigation in data collection
-        await trackNavigationInDataCollection(action.url); // track navigation
-        
-        notifyPopup('ACTION_SUCCESS', {result: `navigated to: ${action.url}`}); // notify popup
         
       } else if (action.type === 'complete') { // check if completion action
         notifyPopup('TASK_COMPLETED', {message: action.message}); // notify popup
@@ -330,33 +330,62 @@ async function trackNavigationInDataCollection(url) {
     const taskResult = await chrome.storage.local.get([`task_data_${taskId}`]); // get task data
     const taskData = taskResult[`task_data_${taskId}`]; // get task data
     if (!taskData) return; // no task data found
-    
+
+    // get working tab id from task data
+    const workingTabId = taskData.workingTabId; // get working tab id
+    let tab;
+    if (workingTabId) { // check if working tab id exists
+      try {
+        tab = await chrome.tabs.get(workingTabId); // get working tab
+      } catch (error) {
+        // working tab was closed, create new one
+        tab = await chrome.tabs.create({url: 'about:blank'}); // create new tab
+        taskData.workingTabId = tab.id; // update working tab id
+        await chrome.storage.local.set({[`task_data_${taskId}`]: taskData}); // save updated data
+      }
+    } else {
+      const tabs = await chrome.tabs.query({active: true, currentWindow: true}); // get active tabs
+      tab = tabs[0]; // get first tab
+    }
+
     const timestamp = new Date().toLocaleTimeString(); // get timestamp
     
     // check if url already exists to avoid duplicates
-    const urlExists = taskData.urls.some(urlData => urlData.url === url); // check for duplicate
-    if (urlExists) return; // url already tracked
+    const urlExists = taskData.urls.some(urlData => urlData.url === tab.url); // check for duplicate
+    if (urlExists) return; // skip if duplicate
     
-    // add new url to task data
+    // update task data with new url
     taskData.urls.push({
-      url: url,
-      timestamp: timestamp,
-      title: 'navigated to page'
-    }); // add url data
+      url: tab.url,
+      timestamp: new Date().toLocaleString()
+    }); // add url to list
+    await chrome.storage.local.set({[`task_data_${taskId}`]: taskData}); // save updated data
     
-    // save updated task data
-    await chrome.storage.local.set({[`task_data_${taskId}`]: taskData}); // save data
-    
-    // update data collection tab if it exists
+    // notify data collection tab of update
     try {
       await chrome.tabs.sendMessage(taskData.dataTabId, {
         type: 'UPDATE_TASK_DATA',
         taskData: taskData
-      }); // send update to data tab
+      }); // send update message
+      console.log('sent url update to data collection tab:', tab.url); // log success
     } catch (error) {
-      console.log('could not update data collection tab:', error.message); // log error
+      console.log('could not send message to data collection tab:', error); // log error
+      // try alternative method - execute script directly
+      try {
+        await chrome.scripting.executeScript({
+          target: { tabId: taskData.dataTabId },
+          func: (taskData) => {
+            if (window.updateTaskData) {
+              window.updateTaskData(taskData);
+            }
+          },
+          args: [taskData]
+        });
+        console.log('updated data collection tab via script injection'); // log success
+      } catch (scriptError) {
+        console.log('script injection also failed:', scriptError); // log error
+      }
     }
-    
   } catch (error) {
     console.log('error tracking navigation:', error.message); // log error
   }

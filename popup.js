@@ -258,10 +258,34 @@ document.addEventListener('DOMContentLoaded', function() {
       showTaskStatus('Processing your request...', 'working'); // show working status
       addLog('request', `user instruction: ${instruction}`); // log user instruction
 
-      // create data collection tab
+      // check for existing data collection tab
       const taskId = Date.now().toString(); // generate unique task id
-      const dataCollectionUrl = chrome.runtime.getURL(`data-collection.html?taskId=${taskId}`); // get extension url
-      const dataTab = await chrome.tabs.create({ url: dataCollectionUrl, active: false }); // create new tab but don't activate it
+      let dataTab;
+      let existingDataTabId = null;
+      
+      // check if there's already a data collection tab
+      const existingResult = await chrome.storage.local.get(['persistent_data_tab_id']); // get existing tab id
+      if (existingResult.persistent_data_tab_id) { // check if tab id exists
+        try {
+          const existingTab = await chrome.tabs.get(existingResult.persistent_data_tab_id); // try to get existing tab
+          if (existingTab && existingTab.url.includes('data-collection.html')) { // check if it's still data collection tab
+            dataTab = existingTab; // reuse existing tab
+            existingDataTabId = existingTab.id; // store existing id
+            addLog('system', `reusing existing data collection tab (id: ${dataTab.id})`); // log reuse
+          }
+        } catch (error) {
+          // existing tab was closed, will create new one
+          addLog('system', 'existing data collection tab was closed, creating new one'); // log creation
+        }
+      }
+      
+      // create new data collection tab if none exists
+      if (!dataTab) { // check if no existing tab
+        const dataCollectionUrl = chrome.runtime.getURL(`data-collection.html`); // get extension url without taskId
+        dataTab = await chrome.tabs.create({ url: dataCollectionUrl, active: false }); // create new tab but don't activate it
+        await chrome.storage.local.set({'persistent_data_tab_id': dataTab.id}); // save tab id for reuse
+        addLog('system', `created new data collection tab (id: ${dataTab.id})`); // log creation
+      }
       
       // initialize task data
       const taskData = {

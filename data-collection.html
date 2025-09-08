@@ -108,42 +108,52 @@
             text-align: center;
             padding: 20px;
         }
+        
+        .no-tasks {
+            color: #666;
+            font-style: italic;
+            text-align: center;
+            padding: 40px;
+            font-size: 16px;
+        }
+        
+        .task-section {
+            background: #f8f9fa;
+            border: 1px solid #e9ecef;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            padding: 20px;
+        }
+        
+        .task-header {
+            font-size: 16px;
+            font-weight: bold;
+            color: #333;
+            margin-bottom: 15px;
+            border-bottom: 1px solid #ddd;
+            padding-bottom: 8px;
+        }
     </style>
 </head>
 <body>
     <div class="container">
         <h1>🤖 AI Prime - Task Data Collection</h1>
         
-        <div class="query-section">
-            <div class="query-label">User Query:</div>
-            <div class="query-text" id="queryText">Loading...</div>
-        </div>
-        
-        <div class="stats" id="statsSection">
-            <span class="stats-item">📊 Total URLs Visited: <span id="urlCount">0</span></span>
-            <span class="stats-item">⏰ Task Started: <span id="startTime">-</span></span>
-        </div>
-        
-        <div class="urls-section">
-            <div class="urls-header">🌐 Visited URLs</div>
-            <div id="urlsList">
-                <div class="no-urls">No URLs visited yet...</div>
-            </div>
+        <div id="tasksContainer">
+            <div class="no-tasks">No tasks executed yet...</div>
         </div>
     </div>
 
     <script>
-        // get task id from url parameters
-        const urlParams = new URLSearchParams(window.location.search);
-        const taskId = urlParams.get('taskId') || 'default';
+        let allTasks = {}; // store all task data
         
         // load initial data
-        loadTaskData();
+        loadAllTasks();
         
         // listen for updates from extension
         window.addEventListener('message', function(event) {
             if (event.data.type === 'UPDATE_TASK_DATA') {
-                updateDisplay(event.data.taskData);
+                updateTaskData(event.data.taskData);
             }
         });
         
@@ -151,53 +161,91 @@
         if (typeof chrome !== 'undefined' && chrome.runtime) {
             chrome.runtime.onMessage.addListener(function(message, sender, sendResponse) {
                 if (message.type === 'UPDATE_TASK_DATA') {
-                    updateDisplay(message.taskData);
+                    updateTaskData(message.taskData);
                 }
             });
         }
         
-        async function loadTaskData() {
+        async function loadAllTasks() {
             try {
-                // try to get data from chrome storage if available
+                // load all task data from chrome storage
                 if (typeof chrome !== 'undefined' && chrome.storage) {
-                    chrome.storage.local.get([`task_data_${taskId}`], function(result) {
-                        const taskData = result[`task_data_${taskId}`];
-                        if (taskData) {
-                            updateDisplay(taskData);
-                        }
+                    chrome.storage.local.get(null, function(result) {
+                        // find all task data entries
+                        Object.keys(result).forEach(key => {
+                            if (key.startsWith('task_data_')) {
+                                const taskData = result[key];
+                                allTasks[taskData.taskId] = taskData;
+                            }
+                        });
+                        updateDisplay();
                     });
                 }
             } catch (error) {
-                console.log('chrome storage not available, using local storage');
+                console.log('chrome storage not available');
             }
         }
         
-        function updateDisplay(taskData) {
-            if (!taskData) return;
+        function updateTaskData(taskData) {
+            if (!taskData || !taskData.taskId) return;
             
-            // update query
-            document.getElementById('queryText').textContent = taskData.query || 'No query provided';
+            // update task in memory
+            allTasks[taskData.taskId] = taskData;
             
-            // update stats
-            document.getElementById('urlCount').textContent = taskData.urls ? taskData.urls.length : 0;
-            document.getElementById('startTime').textContent = taskData.startTime || '-';
+            // refresh display
+            updateDisplay();
+        }
+        
+        function updateDisplay() {
+            const container = document.getElementById('tasksContainer');
             
-            // update urls list
-            const urlsList = document.getElementById('urlsList');
-            if (taskData.urls && taskData.urls.length > 0) {
-                urlsList.innerHTML = taskData.urls.map(urlData => `
-                    <div class="url-entry">
-                        <a href="${urlData.url}" target="_blank" class="url-link">${urlData.url}</a>
-                        <span class="url-timestamp">${urlData.timestamp}</span>
-                    </div>
-                `).join('');
-            } else {
-                urlsList.innerHTML = '<div class="no-urls">No URLs visited yet...</div>';
+            // get tasks sorted by start time (newest first)
+            const taskList = Object.values(allTasks).sort((a, b) => 
+                new Date(b.startTime) - new Date(a.startTime)
+            );
+            
+            if (taskList.length === 0) {
+                container.innerHTML = '<div class="no-tasks">No tasks executed yet...</div>';
+                return;
             }
+            
+            // create html for all tasks
+            container.innerHTML = taskList.map(taskData => `
+                <div class="task-section">
+                    <div class="task-header">
+                        🕐 ${taskData.startTime} - Task: ${taskData.query}
+                    </div>
+                    
+                    <div class="query-section">
+                        <div class="query-label">User Query:</div>
+                        <div class="query-text">${taskData.query || 'No query provided'}</div>
+                    </div>
+                    
+                    <div class="stats">
+                        <span class="stats-item">📊 Total URLs Visited: ${taskData.urls ? taskData.urls.length : 0}</span>
+                        <span class="stats-item">⏰ Task Started: ${taskData.startTime || '-'}</span>
+                    </div>
+                    
+                    <div class="urls-section">
+                        <div class="urls-header">🌐 Visited URLs</div>
+                        <div class="urls-list">
+                            ${taskData.urls && taskData.urls.length > 0 ? 
+                                taskData.urls.map(urlData => `
+                                    <div class="url-entry">
+                                        <a href="${urlData.url}" target="_blank" class="url-link">${urlData.url}</a>
+                                        <span class="url-timestamp">${urlData.timestamp}</span>
+                                    </div>
+                                `).join('') :
+                                '<div class="no-urls">No URLs visited yet...</div>'
+                            }
+                        </div>
+                    </div>
+                </div>
+            `).join('');
         }
         
         // expose function for extension to call
-        window.updateTaskData = updateDisplay;
+        window.updateTaskData = updateTaskData;
     </script>
 </body>
 </html>

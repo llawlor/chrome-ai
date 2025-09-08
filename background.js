@@ -361,32 +361,29 @@ async function trackNavigationInDataCollection(url) {
     }); // add url to list
     await chrome.storage.local.set({[`task_data_${taskId}`]: taskData}); // save updated data
     
-    // notify data collection tab of update using script injection (more reliable)
+    // notify data collection tab of update
     try {
-      await chrome.scripting.executeScript({
-        target: { tabId: taskData.dataTabId },
-        func: (taskData) => {
-          console.log('updating data collection with:', taskData); // debug log
-          if (window.updateTaskData) {
-            window.updateTaskData(taskData);
-          } else {
-            console.log('updateTaskData function not found on window'); // debug log
-          }
-        },
-        args: [taskData]
-      });
-      console.log('updated data collection tab via script injection for url:', tab.url); // log success
-    } catch (scriptError) {
-      console.log('script injection failed:', scriptError); // log error
-      // fallback to message passing
+      await chrome.tabs.sendMessage(taskData.dataTabId, {
+        type: 'UPDATE_TASK_DATA',
+        taskData: taskData
+      }); // send update message
+      console.log('sent url update to data collection tab:', tab.url); // log success
+    } catch (error) {
+      console.log('could not send message to data collection tab:', error); // log error
+      // try alternative method - execute script directly
       try {
-        await chrome.tabs.sendMessage(taskData.dataTabId, {
-          type: 'UPDATE_TASK_DATA',
-          taskData: taskData
-        }); // send update message
-        console.log('fallback message sent to data collection tab'); // log success
-      } catch (messageError) {
-        console.log('both script injection and message passing failed:', messageError); // log error
+        await chrome.scripting.executeScript({
+          target: { tabId: taskData.dataTabId },
+          func: (taskData) => {
+            if (window.updateTaskData) {
+              window.updateTaskData(taskData);
+            }
+          },
+          args: [taskData]
+        });
+        console.log('updated data collection tab via script injection'); // log success
+      } catch (scriptError) {
+        console.log('script injection also failed:', scriptError); // log error
       }
     }
   } catch (error) {

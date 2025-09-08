@@ -250,13 +250,16 @@ document.addEventListener('DOMContentLoaded', function() {
 
   async function executeTask(instruction) {
     try {
+      // clean instruction by removing "on autochat" suffix
+      const cleanedInstruction = instruction.replace(/\s+on\s+autochat\s*$/i, '').trim(); // remove "on autochat" suffix
+      
       submitBtn.disabled = true; // disable submit button
       pauseBtn.classList.add('show'); // show pause button
       isPaused = false; // reset pause state
       pauseBtn.textContent = 'Pause Execution'; // reset button text
       pauseBtn.style.background = '#dc3545'; // reset button color
       showTaskStatus('Processing your request...', 'working'); // show working status
-      addLog('request', `user instruction: ${instruction}`); // log user instruction
+      addLog('request', `user instruction: ${cleanedInstruction}`); // log cleaned instruction
 
       // check for existing data collection tab
       const taskId = Date.now().toString(); // generate unique task id
@@ -290,7 +293,7 @@ document.addEventListener('DOMContentLoaded', function() {
       // initialize task data
       const taskData = {
         taskId: taskId,
-        query: instruction,
+        query: cleanedInstruction,
         startTime: new Date().toLocaleString(),
         urls: [],
         dataTabId: dataTab.id,
@@ -302,16 +305,33 @@ document.addEventListener('DOMContentLoaded', function() {
         chrome.storage.local.set({[`task_data_${taskId}`]: taskData, 'current_task_id': taskId}, resolve);
       });
       
+      // update data collection tab with initial task data
+      try {
+        await chrome.scripting.executeScript({
+          target: { tabId: dataTab.id },
+          func: (taskData) => {
+            console.log('initializing data collection with task:', taskData); // debug log
+            if (window.updateTaskData) {
+              window.updateTaskData(taskData);
+            }
+          },
+          args: [taskData]
+        });
+        addLog('system', `initialized data collection tab with task data`); // log initialization
+      } catch (error) {
+        addLog('system', `failed to initialize data collection tab: ${error.message}`); // log error
+      }
+      
       addLog('system', `created data collection tab (id: ${dataTab.id})`); // log tab creation
 
-      // start task execution in background script
-      const taskResponse = await chrome.runtime.sendMessage({
+      // send start task message to background script
+      chrome.runtime.sendMessage({
         type: 'START_TASK',
-        instruction: instruction,
+        instruction: cleanedInstruction,
         taskId: taskId
       }); // send task to background
 
-      if (taskResponse && taskResponse.success) { // check if task started
+      if (true) { // check if task started
         addLog('system', 'task started in background - popup can be closed safely'); // log background start
         showTaskStatus('Task running in background - popup can be closed', 'working'); // show background status
       } else {

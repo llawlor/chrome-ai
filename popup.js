@@ -23,6 +23,15 @@ document.addEventListener('DOMContentLoaded', function() {
 
   // load existing api key on popup open
   loadApiKey();
+  
+  // ensure logs toggle has correct initial text and debug element selection
+  console.log('logsToggle element:', logsToggle); // debug log
+  console.log('logsContainer element:', logsContainer); // debug log
+  if (logsContainer && logsContainer.classList.contains('hidden')) { // check if logs are hidden
+    logsToggle.textContent = 'Show Logs'; // set correct initial text
+  } else {
+    logsToggle.textContent = 'Hide Logs'; // set correct initial text
+  }
 
   // toggle api key section visibility when link is clicked
   apiKeyLink.addEventListener('click', function() {
@@ -30,10 +39,16 @@ document.addEventListener('DOMContentLoaded', function() {
   });
 
   // toggle logs visibility when toggle is clicked
-  logsToggle.addEventListener('click', function() {
-    logsContainer.classList.toggle('hidden'); // toggle logs container visibility
-    logsToggle.textContent = logsContainer.classList.contains('hidden') ? 'Show Logs' : 'Hide Logs'; // update toggle text
-  });
+  if (logsToggle && logsContainer) { // check if elements exist
+    logsToggle.addEventListener('click', function() {
+      console.log('logs toggle clicked'); // debug log
+      logsContainer.classList.toggle('hidden'); // toggle logs container visibility
+      logsToggle.textContent = logsContainer.classList.contains('hidden') ? 'Show Logs' : 'Hide Logs'; // update toggle text
+      console.log('logs container hidden:', logsContainer.classList.contains('hidden')); // debug log
+    });
+  } else {
+    console.error('logs toggle or container element not found'); // error log
+  }
 
   // clear logs when button is clicked
   clearLogsBtn.addEventListener('click', async function() {

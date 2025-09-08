@@ -27,6 +27,8 @@ document.addEventListener('DOMContentLoaded', function() {
   // ensure logs toggle has correct initial text and debug element selection
   console.log('logsToggle element:', logsToggle); // debug log
   console.log('logsContainer element:', logsContainer); // debug log
+  console.log('logsSection element:', logsSection); // debug log
+  console.log('logsSection hidden:', logsSection ? logsSection.classList.contains('hidden') : 'element not found'); // debug log
   if (logsContainer && logsContainer.classList.contains('hidden')) { // check if logs are hidden
     logsToggle.textContent = 'Show Logs'; // set correct initial text
   } else {
@@ -159,12 +161,10 @@ document.addEventListener('DOMContentLoaded', function() {
   function updateMainInterface(show) {
     if (show) { // check if should show main interface
       mainInterface.classList.remove('hidden'); // show main interface
-      logsSection.classList.remove('hidden'); // show logs section
       apiKeyLink.classList.remove('hidden'); // show api key link
       apiKeySection.classList.add('hidden'); // hide api key section
     } else {
       mainInterface.classList.add('hidden'); // hide main interface
-      logsSection.classList.add('hidden'); // hide logs section
       apiKeyLink.classList.add('hidden'); // hide api key link
       apiKeySection.classList.remove('hidden'); // show api key section for setup
     }

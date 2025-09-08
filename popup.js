@@ -35,6 +35,38 @@ document.addEventListener('DOMContentLoaded', function() {
     logsToggle.textContent = 'Hide Logs'; // set correct initial text
   }
 
+  // listen for messages from background script
+  chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    if (message.type === 'TASK_STARTED') { // handle task start
+      addLog('system', `task started: ${message.data.instruction}`); // log task start
+    } else if (message.type === 'ACTION_EXECUTING') { // handle action execution
+      const actionDescription = getActionDescription(message.data.action); // get description
+      showTaskStatus(`executing step ${message.data.index + 1}/${message.data.total}: ${actionDescription}`, 'working'); // show status
+      addLog('action', `executing (${message.data.index + 1}/${message.data.total}): ${JSON.stringify(message.data.action)}`); // log action
+    } else if (message.type === 'ACTION_SUCCESS') { // handle action success
+      addLog('action', message.data.result); // log success
+    } else if (message.type === 'ACTION_ERROR') { // handle action error
+      addLog('error', `action failed: ${message.data.error}`); // log error
+    } else if (message.type === 'TASK_COMPLETED') { // handle task completion
+      showTaskStatus('Task completed successfully', 'completed'); // show completion
+      addLog('system', 'task completed - ready for next instruction'); // log completion
+      submitBtn.disabled = false; // re-enable submit button
+      pauseBtn.classList.remove('show'); // hide pause button
+    } else if (message.type === 'TASK_FAILED') { // handle task failure
+      showTaskStatus('Task failed - check logs for details', 'error'); // show failure
+      addLog('error', `task failed: ${message.data.error}`); // log failure
+      submitBtn.disabled = false; // re-enable submit button
+      pauseBtn.classList.remove('show'); // hide pause button
+    } else if (message.type === 'TASK_ERROR') { // handle task error
+      showTaskStatus(`Task error: ${message.data.error}`, 'error'); // show error
+      addLog('error', message.data.error); // log error
+      submitBtn.disabled = false; // re-enable submit button
+      pauseBtn.classList.remove('show'); // hide pause button
+    } else if (message.type === 'TASK_PAUSED') { // handle task pause
+      showTaskStatus('Task paused - click resume to continue', 'working'); // show pause status
+    }
+  });
+
   // toggle api key section visibility when link is clicked
   apiKeyLink.addEventListener('click', function() {
     apiKeySection.classList.toggle('hidden'); // toggle hidden class
@@ -58,21 +90,27 @@ document.addEventListener('DOMContentLoaded', function() {
   });
 
   // handle pause/resume button
-  pauseBtn.addEventListener('click', function() {
+  pauseBtn.addEventListener('click', async function() {
     if (isPaused) { // check if currently paused
-      isPaused = false; // resume execution
-      pauseBtn.textContent = 'Pause Execution'; // update button text
-      pauseBtn.style.background = '#dc3545'; // reset button color
-      addLog('action', 'execution resumed'); // log resume
-      if (currentActions.length > 0) { // check if actions to resume
-        executeActionsFromIndex(currentActions, currentActionIndex); // resume from current index
+      // send resume message to background
+      const response = await chrome.runtime.sendMessage({type: 'RESUME_TASK'}); // resume task
+      if (response && response.success) { // check if resumed
+        isPaused = false; // update local state
+        pauseBtn.textContent = 'Pause Execution'; // update button text
+        pauseBtn.style.background = '#dc3545'; // reset button color
+        addLog('action', 'execution resumed'); // log resume
+        showTaskStatus('Task resumed in background', 'working'); // show resume status
       }
     } else {
-      isPaused = true; // pause execution
-      pauseBtn.textContent = 'Resume Execution'; // update button text
-      pauseBtn.style.background = '#28a745'; // change to green
-      addLog('action', 'execution paused'); // log pause
-      showTaskStatus('Execution paused by user', 'working'); // show pause status
+      // send pause message to background
+      const response = await chrome.runtime.sendMessage({type: 'PAUSE_TASK'}); // pause task
+      if (response && response.success) { // check if paused
+        isPaused = true; // update local state
+        pauseBtn.textContent = 'Resume Execution'; // update button text
+        pauseBtn.style.background = '#28a745'; // change to green
+        addLog('action', 'execution paused'); // log pause
+        showTaskStatus('Execution paused by user', 'working'); // show pause status
+      }
     }
   });
 
@@ -241,134 +279,22 @@ document.addEventListener('DOMContentLoaded', function() {
       
       addLog('system', `created data collection tab (id: ${dataTab.id})`); // log tab creation
 
-      // get api key from storage
-      const result = await new Promise((resolve) => {
-        chrome.storage.local.get(['openai_api_key'], resolve);
-      });
+      // start task execution in background script
+      const taskResponse = await chrome.runtime.sendMessage({
+        type: 'START_TASK',
+        instruction: instruction,
+        taskId: taskId
+      }); // send task to background
 
-      if (!result.openai_api_key) { // check if api key exists
-        const errorMsg = 'API key not found. Please add your API key first.'; // create error message
-        showStatus(errorMsg, 'error'); // show error message
-        addLog('error', errorMsg); // log error
-        return;
-      }
-
-      // get current tab info
-      const [tab] = await chrome.tabs.query({active: true, currentWindow: true});
-      const currentUrl = tab.url; // get current tab url
-      const currentTitle = tab.title; // get current tab title
-      addLog('request', `current page: ${currentTitle} (${currentUrl})`); // log current page
-
-      // prepare openai request
-      const requestBody = {
-        model: 'gpt-5-mini',
-        messages: [
-          {
-            role: 'system',
-            content: `you are an ai assistant that helps users navigate and interact with websites. you can:
-1. navigate to websites by providing urls
-2. click on links and buttons by providing css selectors
-3. fill out forms by providing selectors and values
-4. submit forms by clicking submit buttons or pressing enter
-5. extract information from pages
-6. scroll and interact with page elements
-
-current page: ${currentTitle}
-
-important: when filling out search forms or inputs, always follow up with submitting the form. use these strategies in order of preference:
-1. press enter key on the input field (most reliable)
-2. click the submit/search button if enter doesn't work
-3. submit the parent form element
-
-if you cannot find the right selectors or actions fail, use the "analyze_page" action to get page structure and ask for guidance.
-
-respond with json containing an array of actions to perform:
-{
-  "actions": [
-    {"type": "navigate", "url": "https://example.com"},
-    {"type": "click", "selector": ".button-class"},
-    {"type": "type", "selector": "#input-id", "text": "text to type"},
-    {"type": "press_key", "selector": "#input-id", "key": "Enter"},
-    {"type": "submit", "selector": "#form-id"},
-    {"type": "scroll", "direction": "down"},
-    {"type": "extract", "selector": ".content", "description": "what to extract"},
-    {"type": "analyze_page", "focus": "search form", "question": "what selector should I use for the search button?"},
-    {"type": "wait", "seconds": 2},
-    {"type": "complete", "message": "task completed successfully"}
-  ]
-}
-
-when selectors fail or you're unsure about page structure, use analyze_page to get relevant HTML and determine correct selectors.`
-          },
-          {
-            role: 'user',
-            content: instruction
-          }
-        ],
-        max_completion_tokens: 1500
-      }; // create request body
-
-      addLog('request', `openai request: ${JSON.stringify(requestBody, null, 2)}`); // log openai request
-
-      const response = await fetch('https://api.openai.com/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${result.openai_api_key}`
-        },
-        body: JSON.stringify(requestBody)
-      });
-
-      if (!response.ok) { // check if request failed
-        const errorText = await response.text(); // get error details
-        addLog('error', `openai api error ${response.status}: ${errorText}`); // log detailed error
-        throw new Error(`openai api error: ${response.status}`); // throw error
-      }
-
-      const data = await response.json(); // parse response
-      addLog('response', `openai response: ${JSON.stringify(data, null, 2)}`); // log openai response
-      const aiResponse = data.choices[0].message.content; // get ai response
-
-      // check if response is empty or null
-      if (!aiResponse || aiResponse.trim() === '') { // check for empty response
-        const errorMsg = 'received empty response from ai - this may be due to token limits or model issues'; // create error message
-        addLog('error', errorMsg); // log error
-        throw new Error(errorMsg); // throw error
-      }
-
-      // parse ai response as json
-      let actions;
-      try {
-        const parsed = JSON.parse(aiResponse); // parse json response
-        actions = parsed.actions; // get actions array
-        
-        // validate actions array exists and is not empty
-        if (!actions || !Array.isArray(actions) || actions.length === 0) { // check for valid actions
-          throw new Error('no valid actions found in response'); // throw error
-        }
-        
-        addLog('response', `parsed actions: ${JSON.stringify(actions, null, 2)}`); // log parsed actions
-      } catch (e) {
-        const errorMsg = 'invalid response format from ai'; // create error message
-        addLog('error', `${errorMsg}: ${aiResponse || 'empty response'}`); // log error with response
-        throw new Error(errorMsg); // throw error
-      }
-
-      // execute actions via content script
-      currentActions = actions; // store actions for pause/resume
-      currentActionIndex = 0; // reset action index
-      await executeActions(actions); // execute actions
-
-      // clear input and show completion message only if no errors
-      const hasErrors = document.querySelectorAll('.log-entry.error').length > 0; // check for error logs
-      instructionInput.value = ''; // clear instruction input
-      if (!hasErrors) { // check if no errors
-        showTaskStatus('Task completed - waiting for next task', 'completed'); // show completion message
-        addLog('system', 'task completed - ready for next instruction'); // log completion
+      if (taskResponse && taskResponse.success) { // check if task started
+        addLog('system', 'task started in background - popup can be closed safely'); // log background start
+        showTaskStatus('Task running in background - popup can be closed', 'working'); // show background status
       } else {
-        showTaskStatus('Task finished with errors - check logs', 'error'); // show error completion
-        addLog('system', 'task finished with errors - ready for next instruction'); // log completion with errors
+        throw new Error('failed to start task in background'); // throw error
       }
+
+      // clear input and show completion message
+      instructionInput.value = ''; // clear instruction input
 
     } catch (error) {
       console.error('task execution error:', error); // log error

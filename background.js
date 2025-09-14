@@ -235,20 +235,8 @@ async function executeActionsFromIndex(actions, startIndex) {
           trackNavigationInDataCollection(action.url); // track navigation after delay
         }, 1000); // wait for page to load
         
-        // wait for page to load and reinject content script
-        await new Promise(resolve => setTimeout(resolve, 2000)); // wait for navigation
-        
-        try {
-          // reinject content script after navigation
-          if (chrome.scripting && chrome.scripting.executeScript) { // check if scripting api available
-            await chrome.scripting.executeScript({
-              target: { tabId: tab.id },
-              files: ['content.js']
-            }); // reinject content script
-          }
-        } catch (reinjectError) {
-          console.log('content script reinject failed:', reinjectError.message); // log reinject failure
-        }
+        // wait for page to load and reinject content script with verification
+        await waitForPageLoadAndReinject(tab.id); // wait and reinject with verification
         
       } else if (action.type === 'complete') { // check if completion action
         notifyPopup('TASK_COMPLETED', {message: action.message}); // notify popup
@@ -277,12 +265,7 @@ async function executeActionsFromIndex(actions, startIndex) {
                 await new Promise(resolve => setTimeout(resolve, 1000)); // wait 1 second
                 
                 try {
-                  if (chrome.scripting && chrome.scripting.executeScript) { // check if scripting api available
-                    await chrome.scripting.executeScript({
-                      target: { tabId: tab.id },
-                      files: ['content.js']
-                    }); // reinject content script
-                  }
+                  await waitForPageLoadAndReinject(tab.id); // use improved reinject function
                 } catch (reinjectError) {
                   console.log('reinject failed on retry:', reinjectError.message); // log reinject failure
                 }
@@ -411,6 +394,49 @@ async function trackNavigationInDataCollection(url) {
   } catch (error) {
     console.log('error tracking navigation:', error.message); // log error
   }
+}
+
+async function waitForPageLoadAndReinject(tabId) {
+  // wait for page to be ready and reinject content script with verification
+  let attempts = 0;
+  const maxAttempts = 10;
+  
+  while (attempts < maxAttempts) {
+    try {
+      // check if tab is loading
+      const tab = await chrome.tabs.get(tabId); // get tab status
+      if (tab.status === 'complete') { // check if page loaded
+        // wait a bit more for page to stabilize
+        await new Promise(resolve => setTimeout(resolve, 500)); // additional wait
+        
+        // reinject content script
+        if (chrome.scripting && chrome.scripting.executeScript) { // check if scripting api available
+          await chrome.scripting.executeScript({
+            target: { tabId: tabId },
+            files: ['content.js']
+          }); // reinject content script
+        }
+        
+        // verify content script is responsive
+        await new Promise(resolve => setTimeout(resolve, 300)); // wait for script to initialize
+        
+        try {
+          await chrome.tabs.sendMessage(tabId, { action: { type: 'wait', seconds: 0 } }); // test message
+          console.log('content script successfully reinjected and verified'); // log success
+          return; // success
+        } catch (testError) {
+          console.log('content script not responsive yet, retrying...'); // log retry
+        }
+      }
+    } catch (error) {
+      console.log('error during reinject attempt:', error.message); // log error
+    }
+    
+    attempts++; // increment attempts
+    await new Promise(resolve => setTimeout(resolve, 500)); // wait before retry
+  }
+  
+  throw new Error('failed to reinject content script after multiple attempts'); // throw error after max attempts
 }
 
 function notifyPopup(type, data) {

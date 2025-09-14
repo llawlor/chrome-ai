@@ -10,6 +10,9 @@
     "scripting",
     "alarms"
   ],
+  "host_permissions": [
+    "<all_urls>"
+  ],
   "web_accessible_resources": [
     {
       "resources": ["data-collection.html", "data-collection.js"],

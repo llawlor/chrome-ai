@@ -30,7 +30,7 @@ async function executeAction(action) {
     case 'submit':
       return await submitForm(action.selector); // submit form
     case 'press_key':
-      return await pressKey(action.selector, action.key); // press key
+      return await pressKey(action.key); // press key
     case 'scroll':
       return await scrollPage(action.direction); // scroll page
     case 'extract':
@@ -164,33 +164,14 @@ async function submitForm(selector) {
   }
 }
 
-async function pressKey(selector, key, expectedOutcome) {
-  // generate multiple selector strategies if single selector provided
-  let selectors = Array.isArray(selector) ? selector : [selector]; // ensure array
-  
-  // if single selector provided, generate fallback strategies
-  if (selectors.length === 1) { // check if only one selector
-    const originalSelector = selectors[0]; // get original selector
-    const fallbackSelectors = generateSelectorFallbacks(originalSelector); // generate fallbacks
-    selectors = [originalSelector, ...fallbackSelectors]; // combine selectors
-  }
-  
-  const result = findElementWithStrategies(selectors); // find element with strategies
-  
-  if (!result) { // check if no element found
-    throw new Error(`element not found with any selector: ${selectors.join(', ')}`); // throw error
-  }
-  
-  const { element, selector: successfulSelector } = result; // destructure result
-  
-  if (!isElementInteractable(element)) { // check if element is interactable
-    throw new Error(`element not interactable: ${successfulSelector}`); // throw error
-  }
+async function pressKey(key) {
+  // press key on currently focused element or document
+  const activeElement = document.activeElement || document.body; // get active element or body
   
   if (key === 'Enter') { // check if enter key
     // try multiple submission strategies for enter key
     
-    // strategy 1: dispatch keyboard events
+    // strategy 1: dispatch keyboard events on active element
     const keydownEvent = new KeyboardEvent('keydown', {
       key: 'Enter',
       code: 'Enter',
@@ -199,7 +180,7 @@ async function pressKey(selector, key, expectedOutcome) {
       bubbles: true,
       cancelable: true
     });
-    element.dispatchEvent(keydownEvent); // dispatch keydown event
+    activeElement.dispatchEvent(keydownEvent); // dispatch keydown event
     
     const keypressEvent = new KeyboardEvent('keypress', {
       key: 'Enter',
@@ -209,7 +190,7 @@ async function pressKey(selector, key, expectedOutcome) {
       bubbles: true,
       cancelable: true
     });
-    element.dispatchEvent(keypressEvent); // dispatch keypress event
+    activeElement.dispatchEvent(keypressEvent); // dispatch keypress event
     
     const keyupEvent = new KeyboardEvent('keyup', {
       key: 'Enter',
@@ -219,11 +200,11 @@ async function pressKey(selector, key, expectedOutcome) {
       bubbles: true,
       cancelable: true
     });
-    element.dispatchEvent(keyupEvent); // dispatch keyup event
+    activeElement.dispatchEvent(keyupEvent); // dispatch keyup event
     
     // strategy 2: try to submit parent form if enter didn't work
     await new Promise(resolve => setTimeout(resolve, 500)); // wait briefly
-    const form = element.closest('form'); // find parent form
+    const form = activeElement.closest('form'); // find parent form
     if (form) { // check if form found
       form.submit(); // submit form
       
@@ -231,7 +212,7 @@ async function pressKey(selector, key, expectedOutcome) {
       await new Promise(resolve => setTimeout(resolve, 1000)); // wait for submission
       const submitted = detectFormSubmission(); // check if submitted
       
-      return `pressed Enter and submitted form for element: ${successfulSelector}${submitted ? ' (confirmed)' : ' (unconfirmed)'}`; // return success message
+      return `pressed Enter and submitted form${submitted ? ' (confirmed)' : ' (unconfirmed)'}`; // return success message
     }
     
     // strategy 3: try clicking submit button
@@ -243,7 +224,7 @@ async function pressKey(selector, key, expectedOutcome) {
       await new Promise(resolve => setTimeout(resolve, 1000)); // wait for submission
       const submitted = detectFormSubmission(); // check if submitted
       
-      return `pressed Enter and clicked submit button for element: ${successfulSelector}${submitted ? ' (confirmed)' : ' (unconfirmed)'}`; // return success message
+      return `pressed Enter and clicked submit button${submitted ? ' (confirmed)' : ' (unconfirmed)'}`; // return success message
     }
     
   } else {
@@ -255,7 +236,7 @@ async function pressKey(selector, key, expectedOutcome) {
       which: key.charCodeAt(0),
       bubbles: true
     });
-    element.dispatchEvent(keydownEvent); // dispatch keydown event
+    activeElement.dispatchEvent(keydownEvent); // dispatch keydown event
     
     const keypressEvent = new KeyboardEvent('keypress', {
       key: key,
@@ -264,7 +245,7 @@ async function pressKey(selector, key, expectedOutcome) {
       which: key.charCodeAt(0),
       bubbles: true
     });
-    element.dispatchEvent(keypressEvent); // dispatch keypress event
+    activeElement.dispatchEvent(keypressEvent); // dispatch keypress event
     
     const keyupEvent = new KeyboardEvent('keyup', {
       key: key,
@@ -273,17 +254,10 @@ async function pressKey(selector, key, expectedOutcome) {
       which: key.charCodeAt(0),
       bubbles: true
     });
-    element.dispatchEvent(keyupEvent); // dispatch keyup event
+    activeElement.dispatchEvent(keyupEvent); // dispatch keyup event
   }
   
-  // verify action success for enter key
-  if (key === 'Enter') { // check if enter key
-    await new Promise(resolve => setTimeout(resolve, 1000)); // wait for potential submission
-    const success = verifyActionSuccess({ type: 'press_key', key }, element, expectedOutcome); // verify success
-    return `pressed ${key} on element: ${successfulSelector}${success ? ' (verified)' : ' (unverified)'}`; // return success message
-  }
-  
-  return `pressed ${key} on element: ${successfulSelector}`; // return success message
+  return `pressed ${key} key`; // return success message
 }
 
 async function analyzePage(focus, question) {

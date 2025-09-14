@@ -396,7 +396,22 @@ Always respond with a structured list of actions in the specified JSON format. B
   })
 });
 
-// ... (rest of the code remains the same)
+if (!assistantResponse.ok) { // check if assistant creation failed
+  const errorText = await assistantResponse.text(); // get error details
+  console.error('assistant creation failed:', assistantResponse.status, errorText); // log error
+  throw new Error(`failed to create assistant: ${assistantResponse.status} - ${errorText}`); // throw error
+}
+
+const assistant = await assistantResponse.json(); // parse assistant response
+console.log('assistant created successfully:', assistant.id); // log success
+
+// store assistant id for reuse
+await new Promise((resolve) => {
+  chrome.storage.local.set({'assistant_id': assistant.id}, resolve); // save assistant id
+});
+
+return assistant.id; // return new assistant id
+}
 
 async function runGPT5ChatCompletion(currentTitle, instruction, apiKey) {
   console.log('running gpt-5 chat completion...'); // log gpt-5 start

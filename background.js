@@ -324,9 +324,11 @@ async function getOrCreateAssistant(apiKey) {
   });
   
   if (result.assistant_id) { // check if assistant exists
+    console.log('using existing assistant:', result.assistant_id); // log existing assistant
     return result.assistant_id; // return existing assistant id
   }
   
+  console.log('creating new assistant...'); // log assistant creation
   // create new assistant with persistent tools and instructions
   const assistantResponse = await fetch('https://api.openai.com/v1/assistants', {
     method: 'POST',
@@ -337,15 +339,22 @@ async function getOrCreateAssistant(apiKey) {
     },
     body: JSON.stringify({
       name: "Web Automation Assistant",
-      instructions: `you are an ai assistant that helps users navigate and interact with websites.
+      instructions: `You are a web automation assistant that helps users navigate and interact with web pages. You analyze the current page and provide structured actions to accomplish user goals.
 
-important: when filling out search forms or inputs, always follow up with submitting the form. use these strategies in order of preference:
-1. press enter key on the input field (most reliable)
-2. click the submit/search button if enter doesn't work
-3. submit the parent form element
+Current capabilities:
+- Navigate to URLs
+- Click on elements (buttons, links, etc.)
+- Type text into input fields
+- Press keys (Enter, Tab, etc.)
+- Submit forms
+- Scroll pages
+- Extract information from pages
+- Analyze page content
+- Wait for page loads
+- Complete tasks
 
-if you cannot find the right selectors or actions fail, use the "analyze_page" action to get page structure and ask for guidance.`,
-      model: "gpt-4o",
+Always respond with a structured list of actions in the specified JSON format. Be precise with selectors and provide clear, actionable steps.`,
+      model: "gpt-5",
       tools: [
         {
           type: "function",
@@ -392,10 +401,13 @@ if you cannot find the right selectors or actions fail, use the "analyze_page" a
   });
   
   if (!assistantResponse.ok) { // check if assistant creation failed
-    throw new Error(`failed to create assistant: ${assistantResponse.status}`); // throw error
+    const errorText = await assistantResponse.text(); // get error details
+    console.error('assistant creation failed:', assistantResponse.status, errorText); // log error
+    throw new Error(`failed to create assistant: ${assistantResponse.status} - ${errorText}`); // throw error
   }
   
   const assistant = await assistantResponse.json(); // parse assistant response
+  console.log('assistant created successfully:', assistant.id); // log success
   
   // store assistant id for reuse
   await new Promise((resolve) => {
@@ -406,7 +418,8 @@ if you cannot find the right selectors or actions fail, use the "analyze_page" a
 }
 
 async function runAssistantTask(assistantId, currentTitle, instruction, apiKey) {
-  // create thread
+  console.log('creating thread for assistant task...'); // log thread creation
+  // create a new thread for this task
   const threadResponse = await fetch('https://api.openai.com/v1/threads', {
     method: 'POST',
     headers: {
@@ -418,12 +431,15 @@ async function runAssistantTask(assistantId, currentTitle, instruction, apiKey) 
   });
   
   if (!threadResponse.ok) { // check if thread creation failed
-    throw new Error(`failed to create thread: ${threadResponse.status}`); // throw error
+    const errorText = await threadResponse.text(); // get error details
+    console.error('thread creation failed:', threadResponse.status, errorText); // log error
+    throw new Error(`failed to create thread: ${threadResponse.status} - ${errorText}`); // throw error
   }
   
   const thread = await threadResponse.json(); // parse thread response
+  console.log('thread created:', thread.id); // log thread id
   
-  // add message to thread
+  console.log('adding message to thread...'); // log message addition
   const messageResponse = await fetch(`https://api.openai.com/v1/threads/${thread.id}/messages`, {
     method: 'POST',
     headers: {
@@ -433,15 +449,20 @@ async function runAssistantTask(assistantId, currentTitle, instruction, apiKey) 
     },
     body: JSON.stringify({
       role: "user",
-      content: `current page: ${currentTitle}\n\nuser instruction: ${instruction}`
+      content: `Current page: ${currentTitle}\n\nUser instruction: ${instruction}`
     })
   });
   
   if (!messageResponse.ok) { // check if message creation failed
-    throw new Error(`failed to add message: ${messageResponse.status}`); // throw error
+    const errorText = await messageResponse.text(); // get error details
+    console.error('message creation failed:', messageResponse.status, errorText); // log error
+    throw new Error(`failed to add message: ${messageResponse.status} - ${errorText}`); // throw error
   }
   
+  console.log('message added to thread'); // log success
+  
   // run assistant
+  console.log('starting assistant run...'); // log run start
   const runResponse = await fetch(`https://api.openai.com/v1/threads/${thread.id}/runs`, {
     method: 'POST',
     headers: {
@@ -455,12 +476,15 @@ async function runAssistantTask(assistantId, currentTitle, instruction, apiKey) 
   });
   
   if (!runResponse.ok) { // check if run creation failed
-    throw new Error(`failed to run assistant: ${runResponse.status}`); // throw error
+    const errorText = await runResponse.text(); // get error details
+    console.error('run creation failed:', runResponse.status, errorText); // log error
+    throw new Error(`failed to start run: ${runResponse.status} - ${errorText}`); // throw error
   }
   
   const run = await runResponse.json(); // parse run response
+  console.log('run started:', run.id, 'status:', run.status); // log run details
   
-  // wait for completion and get result
+  // wait for run completion and get result
   return await waitForRunCompletion(thread.id, run.id, apiKey); // wait for completion
 }
 
@@ -469,6 +493,7 @@ async function waitForRunCompletion(threadId, runId, apiKey) {
   const maxAttempts = 30; // maximum attempts
   
   while (attempts < maxAttempts) { // loop until completion or max attempts
+    console.log(`checking run status (attempt ${attempts + 1}/${maxAttempts})...`); // log attempt
     const runResponse = await fetch(`https://api.openai.com/v1/threads/${threadId}/runs/${runId}`, {
       method: 'GET',
       headers: {
@@ -478,12 +503,16 @@ async function waitForRunCompletion(threadId, runId, apiKey) {
     });
     
     if (!runResponse.ok) { // check if run status check failed
-      throw new Error(`failed to check run status: ${runResponse.status}`); // throw error
+      const errorText = await runResponse.text(); // get error details
+      console.error('run status check failed:', runResponse.status, errorText); // log error
+      throw new Error(`failed to check run status: ${runResponse.status} - ${errorText}`); // throw error
     }
     
     const run = await runResponse.json(); // parse run response
+    console.log('run status:', run.status); // log current status
     
     if (run.status === 'completed') { // check if run completed
+      console.log('run completed, getting messages...'); // log completion
       // get messages from thread
       const messagesResponse = await fetch(`https://api.openai.com/v1/threads/${threadId}/messages`, {
         method: 'GET',
@@ -494,33 +523,42 @@ async function waitForRunCompletion(threadId, runId, apiKey) {
       });
       
       if (!messagesResponse.ok) { // check if messages retrieval failed
-        throw new Error(`failed to get messages: ${messagesResponse.status}`); // throw error
+        const errorText = await messagesResponse.text(); // get error details
+        console.error('messages retrieval failed:', messagesResponse.status, errorText); // log error
+        throw new Error(`failed to get messages: ${messagesResponse.status} - ${errorText}`); // throw error
       }
       
       const messages = await messagesResponse.json(); // parse messages response
-      const lastMessage = messages.data[0]; // get latest message
+      console.log('found', messages.data.length, 'messages'); // log message count
       
-      // extract function call from message
-      if (lastMessage.content[0].type === 'text') { // check if text content
-        // look for tool calls in run steps
-        const stepsResponse = await fetch(`https://api.openai.com/v1/threads/${threadId}/runs/${runId}/steps`, {
-          method: 'GET',
-          headers: {
-            'Authorization': `Bearer ${apiKey}`,
-            'OpenAI-Beta': 'assistants=v2'
-          }
-        });
+      // find assistant's response with function call
+      const assistantMessage = messages.data.find(msg => msg.role === 'assistant'); // find assistant message
+      if (assistantMessage) { // check if assistant message exists
+        console.log('assistant message content:', JSON.stringify(assistantMessage.content, null, 2)); // log content
         
-        if (stepsResponse.ok) { // check if steps retrieval succeeded
-          const steps = await stepsResponse.json(); // parse steps response
-          const toolStep = steps.data.find(step => step.type === 'tool_calls'); // find tool call step
-          
-          if (toolStep && toolStep.step_details.tool_calls[0]) { // check if tool call found
-            const toolCall = toolStep.step_details.tool_calls[0]; // get tool call
-            if (toolCall.function.name === 'web_automation_actions') { // check function name
-              const functionArgs = JSON.parse(toolCall.function.arguments); // parse arguments
-              return functionArgs.actions; // return actions
+        // check for tool calls (function calls)
+        if (assistantMessage.tool_calls && assistantMessage.tool_calls.length > 0) { // check for tool calls
+          const toolCall = assistantMessage.tool_calls[0]; // get first tool call
+          if (toolCall.type === 'function') { // check if function call
+            console.log('found function call:', toolCall.function.name); // log function name
+            try {
+              return JSON.parse(toolCall.function.arguments); // parse and return function arguments
+            } catch (e) {
+              console.error('failed to parse function arguments:', toolCall.function.arguments); // log parse error
+              throw new Error('failed to parse function call arguments as json'); // throw parse error
             }
+          }
+        }
+        
+        // fallback: check text content for json
+        if (assistantMessage.content[0] && assistantMessage.content[0].type === 'text') { // check if text content
+          const content = assistantMessage.content[0].text.value; // get text content
+          console.log('assistant text content:', content); // log text content
+          try {
+            return JSON.parse(content); // parse and return json content
+          } catch (e) {
+            console.error('failed to parse text content as json:', content); // log parse error
+            throw new Error('failed to parse assistant response as json'); // throw parse error
           }
         }
       }

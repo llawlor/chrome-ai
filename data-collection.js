@@ -1,52 +1,74 @@
 let allTasks = {}; // store all task data
 
-// load initial data
+// load initial data using chrome storage api
 loadAllTasks();
 
-// listen for updates from extension
-window.addEventListener('message', function(event) {
-    if (event.data.type === 'UPDATE_TASK_DATA') {
-        updateTaskData(event.data.taskData);
-    }
-});
-
-// listen for chrome extension messages
+// use chrome runtime messaging instead of window.addEventListener
 if (typeof chrome !== 'undefined' && chrome.runtime) {
     chrome.runtime.onMessage.addListener(function(message, sender, sendResponse) {
-        if (message.type === 'UPDATE_TASK_DATA') {
-            updateTaskData(message.taskData);
+        if (message.type === 'UPDATE_TASK_DATA') { // handle task data updates
+            updateTaskData(message.taskData); // update task data
+            sendResponse({success: true}); // send response
+        }
+        return true; // keep message channel open
+    });
+}
+
+// listen for storage changes to sync data across tabs
+if (typeof chrome !== 'undefined' && chrome.storage) {
+    chrome.storage.onChanged.addListener(function(changes, namespace) {
+        if (namespace === 'local') { // check if local storage changed
+            // reload task data when storage changes
+            Object.keys(changes).forEach(key => {
+                if (key.startsWith('task_data_')) { // check if task data changed
+                    const change = changes[key]; // get change details
+                    if (change.newValue) { // check if new value exists
+                        allTasks[change.newValue.taskId] = change.newValue; // update task in memory
+                    } else if (change.oldValue) { // check if task was deleted
+                        delete allTasks[change.oldValue.taskId]; // remove from memory
+                    }
+                }
+            });
+            updateDisplay(); // refresh display
         }
     });
 }
 
 async function loadAllTasks() {
     try {
-        // load all task data from chrome storage
+        // use chrome storage api with promises
         if (typeof chrome !== 'undefined' && chrome.storage) {
-            chrome.storage.local.get(null, function(result) {
-                // find all task data entries
-                Object.keys(result).forEach(key => {
-                    if (key.startsWith('task_data_')) {
-                        const taskData = result[key];
-                        allTasks[taskData.taskId] = taskData;
-                    }
-                });
-                updateDisplay();
+            const result = await new Promise((resolve) => {
+                chrome.storage.local.get(null, resolve); // get all storage data
             });
+            
+            // find all task data entries
+            Object.keys(result).forEach(key => {
+                if (key.startsWith('task_data_')) { // check if task data key
+                    const taskData = result[key]; // get task data
+                    allTasks[taskData.taskId] = taskData; // store in memory
+                }
+            });
+            updateDisplay(); // update display
         }
     } catch (error) {
-        console.log('chrome storage not available'); // log error
+        console.log('chrome storage not available:', error.message); // log error
     }
 }
 
 function updateTaskData(taskData) {
-    if (!taskData || !taskData.taskId) return;
+    if (!taskData || !taskData.taskId) return; // validate input
     
     // update task in memory
-    allTasks[taskData.taskId] = taskData;
+    allTasks[taskData.taskId] = taskData; // store task data
+    
+    // persist to chrome storage
+    if (typeof chrome !== 'undefined' && chrome.storage) {
+        chrome.storage.local.set({[`task_data_${taskData.taskId}`]: taskData}); // save to storage
+    }
     
     // refresh display
-    updateDisplay();
+    updateDisplay(); // update ui
 }
 
 function updateDisplay() {

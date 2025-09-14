@@ -40,8 +40,10 @@ async function startTask(instruction, taskId) {
     // notify popup of task start
     notifyPopup('TASK_STARTED', {instruction, taskId}); // notify popup
     
-    // get api key from storage
-    const result = await chrome.storage.local.get(['openai_api_key']); // get api key
+    // get api key from storage using chrome storage api
+    const result = await new Promise((resolve) => {
+      chrome.storage.local.get(['openai_api_key'], resolve); // get api key
+    });
     
     if (!result.openai_api_key) { // check if api key exists
       const errorMsg = 'API key not found. Please add your API key first.'; // create error message
@@ -50,25 +52,29 @@ async function startTask(instruction, taskId) {
       return;
     }
 
-    // get task data to find data collection tab
-    const taskResult = await chrome.storage.local.get([`task_data_${taskId}`]); // get task data
+    // get task data using chrome storage api
+    const taskResult = await new Promise((resolve) => {
+      chrome.storage.local.get([`task_data_${taskId}`], resolve); // get task data
+    });
     const taskData = taskResult[`task_data_${taskId}`]; // get task data
     const dataTabId = taskData ? taskData.dataTabId : null; // get data tab id
 
-    // get current tab info (but exclude data collection tab)
+    // get current tab info using chrome tabs api
     const tabs = await chrome.tabs.query({active: true, currentWindow: true}); // get active tabs
     let workingTab = tabs[0]; // get first tab
     
-    // if current tab is data collection tab, create new working tab
+    // if current tab is data collection tab, create new working tab using chrome tabs api
     if (workingTab.id === dataTabId) { // check if current tab is data tab
       workingTab = await chrome.tabs.create({url: 'about:blank'}); // create new working tab
       await chrome.tabs.update(workingTab.id, {active: true}); // make it active
     }
     
-    // store working tab id in task data
+    // store working tab id in task data using chrome storage api
     if (taskData) { // check if task data exists
       taskData.workingTabId = workingTab.id; // store working tab id
-      await chrome.storage.local.set({[`task_data_${taskId}`]: taskData}); // save updated data
+      await new Promise((resolve) => {
+        chrome.storage.local.set({[`task_data_${taskId}`]: taskData}, resolve); // save updated data
+      });
     }
     
     const currentUrl = workingTab.url; // get current tab url
@@ -196,24 +202,28 @@ async function executeActionsFromIndex(actions, startIndex) {
     try {
       await new Promise(resolve => setTimeout(resolve, 300)); // wait between actions
       
-      // get working tab id from task data
-      const taskResult = await chrome.storage.local.get([`task_data_${currentTask.taskId}`]); // get task data
+      // get working tab id from task data using chrome storage api
+      const taskResult = await new Promise((resolve) => {
+        chrome.storage.local.get([`task_data_${currentTask.taskId}`], resolve); // get task data
+      });
       const taskData = taskResult[`task_data_${currentTask.taskId}`]; // get task data
       const workingTabId = taskData ? taskData.workingTabId : null; // get working tab id
       
-      // use working tab if available, otherwise get active tab
+      // use chrome tabs api for tab management
       let tab;
       if (workingTabId) { // check if working tab id exists
         try {
-          tab = await chrome.tabs.get(workingTabId); // get working tab
+          tab = await chrome.tabs.get(workingTabId); // get working tab using chrome api
         } catch (error) {
-          // working tab was closed, create new one
+          // working tab was closed, create new one using chrome tabs api
           tab = await chrome.tabs.create({url: 'about:blank'}); // create new tab
           taskData.workingTabId = tab.id; // update working tab id
-          await chrome.storage.local.set({[`task_data_${currentTask.taskId}`]: taskData}); // save updated data
+          await new Promise((resolve) => {
+            chrome.storage.local.set({[`task_data_${currentTask.taskId}`]: taskData}, resolve); // save updated data
+          });
         }
       } else {
-        const tabs = await chrome.tabs.query({active: true, currentWindow: true}); // get active tabs
+        const tabs = await chrome.tabs.query({active: true, currentWindow: true}); // get active tabs using chrome api
         tab = tabs[0]; // get first tab
       }
 
@@ -321,30 +331,38 @@ async function executeActionsFromIndex(actions, startIndex) {
 
 async function trackNavigationInDataCollection(url) {
   try {
-    // get current task id
-    const result = await chrome.storage.local.get(['current_task_id']); // get task id
+    // use chrome storage api with promises
+    const result = await new Promise((resolve) => {
+      chrome.storage.local.get(['current_task_id'], resolve); // get task id
+    });
+    
     const taskId = result.current_task_id; // get task id
     if (!taskId) return; // no active task
     
-    // get current task data
-    const taskResult = await chrome.storage.local.get([`task_data_${taskId}`]); // get task data
+    // get current task data using chrome storage api
+    const taskResult = await new Promise((resolve) => {
+      chrome.storage.local.get([`task_data_${taskId}`], resolve); // get task data
+    });
+    
     const taskData = taskResult[`task_data_${taskId}`]; // get task data
     if (!taskData) return; // no task data found
 
-    // get working tab id from task data
+    // use chrome tabs api for tab management
     const workingTabId = taskData.workingTabId; // get working tab id
     let tab;
     if (workingTabId) { // check if working tab id exists
       try {
-        tab = await chrome.tabs.get(workingTabId); // get working tab
+        tab = await chrome.tabs.get(workingTabId); // get working tab using chrome api
       } catch (error) {
-        // working tab was closed, create new one
+        // working tab was closed, create new one using chrome tabs api
         tab = await chrome.tabs.create({url: 'about:blank'}); // create new tab
         taskData.workingTabId = tab.id; // update working tab id
-        await chrome.storage.local.set({[`task_data_${taskId}`]: taskData}); // save updated data
+        await new Promise((resolve) => {
+          chrome.storage.local.set({[`task_data_${taskId}`]: taskData}, resolve); // save updated data
+        });
       }
     } else {
-      const tabs = await chrome.tabs.query({active: true, currentWindow: true}); // get active tabs
+      const tabs = await chrome.tabs.query({active: true, currentWindow: true}); // get active tabs using chrome api
       tab = tabs[0]; // get first tab
     }
 
@@ -359,9 +377,13 @@ async function trackNavigationInDataCollection(url) {
       url: tab.url,
       timestamp: new Date().toLocaleString()
     }); // add url to list
-    await chrome.storage.local.set({[`task_data_${taskId}`]: taskData}); // save updated data
     
-    // notify data collection tab of update
+    // save to chrome storage using promise
+    await new Promise((resolve) => {
+      chrome.storage.local.set({[`task_data_${taskId}`]: taskData}, resolve); // save updated data
+    });
+    
+    // notify data collection tab using chrome runtime messaging
     try {
       await chrome.tabs.sendMessage(taskData.dataTabId, {
         type: 'UPDATE_TASK_DATA',
@@ -370,7 +392,7 @@ async function trackNavigationInDataCollection(url) {
       console.log('sent url update to data collection tab:', tab.url); // log success
     } catch (error) {
       console.log('could not send message to data collection tab:', error); // log error
-      // try alternative method - execute script directly
+      // try alternative method using chrome scripting api
       try {
         await chrome.scripting.executeScript({
           target: { tabId: taskData.dataTabId },
@@ -381,9 +403,9 @@ async function trackNavigationInDataCollection(url) {
           },
           args: [taskData]
         });
-        console.log('updated data collection tab via script injection'); // log success
+        console.log('updated data collection tab via chrome scripting api'); // log success
       } catch (scriptError) {
-        console.log('script injection also failed:', scriptError); // log error
+        console.log('chrome scripting api also failed:', scriptError); // log error
       }
     }
   } catch (error) {

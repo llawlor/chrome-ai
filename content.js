@@ -657,17 +657,17 @@ async function waitSeconds(seconds) {
 
 async function trackUrlVisit() {
   try {
-    // get current task id from storage
+    // use chrome storage api with promises for consistent api usage
     const result = await new Promise((resolve) => {
-      chrome.storage.local.get(['current_task_id'], resolve);
+      chrome.storage.local.get(['current_task_id'], resolve); // get task id using chrome storage api
     });
     
     const taskId = result.current_task_id; // get task id
     if (!taskId) return; // no active task
     
-    // get current task data
+    // get current task data using chrome storage api
     const taskResult = await new Promise((resolve) => {
-      chrome.storage.local.get([`task_data_${taskId}`], resolve);
+      chrome.storage.local.get([`task_data_${taskId}`], resolve); // get task data using chrome storage api
     });
     
     const taskData = taskResult[`task_data_${taskId}`]; // get task data
@@ -687,22 +687,32 @@ async function trackUrlVisit() {
       title: document.title || 'untitled page'
     }); // add url data
     
-    // save updated task data
+    // save updated task data using chrome storage api
     await new Promise((resolve) => {
-      chrome.storage.local.set({[`task_data_${taskId}`]: taskData}, resolve);
+      chrome.storage.local.set({[`task_data_${taskId}`]: taskData}, resolve); // save using chrome storage api
     });
     
-    // update data collection tab if it exists
+    // update data collection tab using chrome runtime messaging
     try {
-      await chrome.tabs.sendMessage(taskData.dataTabId, {
+      await chrome.runtime.sendMessage({
         type: 'UPDATE_TASK_DATA',
-        taskData: taskData
-      }); // send update to data tab
+        taskData: taskData,
+        targetTabId: taskData.dataTabId
+      }); // send update via chrome runtime messaging
     } catch (error) {
-      console.log('could not update data collection tab:', error.message); // log error
+      console.log('could not update data collection tab via runtime:', error.message); // log error
+      // fallback to direct tab messaging
+      try {
+        await chrome.tabs.sendMessage(taskData.dataTabId, {
+          type: 'UPDATE_TASK_DATA',
+          taskData: taskData
+        }); // send update to data tab
+      } catch (tabError) {
+        console.log('could not update data collection tab via tabs:', tabError.message); // log error
+      }
     }
     
-    console.log('tracked url visit:', currentUrl); // log url tracking
+    console.log('tracked url visit using chrome apis:', currentUrl); // log url tracking
     
   } catch (error) {
     console.log('error tracking url visit:', error.message); // log error

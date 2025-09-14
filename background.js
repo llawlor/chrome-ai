@@ -80,90 +80,11 @@ async function startTask(instruction, taskId) {
     const currentUrl = workingTab.url; // get current tab url
     const currentTitle = workingTab.title; // get current tab title
     
-    // prepare openai request
-    const requestBody = {
-      model: 'gpt-5-mini',
-      messages: [
-        {
-          role: 'system',
-          content: `you are an ai assistant that helps users navigate and interact with websites. you can:
-1. navigate to websites by providing urls
-2. click on links and buttons by providing css selectors
-3. fill out forms by providing selectors and values
-4. submit forms by clicking submit buttons or pressing enter
-5. extract information from pages
-6. scroll and interact with page elements
-
-current page: ${currentTitle}
-
-important: when filling out search forms or inputs, always follow up with submitting the form. use these strategies in order of preference:
-1. press enter key on the input field (most reliable)
-2. click the submit/search button if enter doesn't work
-3. submit the parent form element
-
-if you cannot find the right selectors or actions fail, use the "analyze_page" action to get page structure and ask for guidance.
-
-respond with json containing an array of actions to perform:
-{
-  "actions": [
-    {"type": "navigate", "url": "https://example.com"},
-    {"type": "click", "selector": ".button-class"},
-    {"type": "type", "selector": "#input-id", "text": "text to type"},
-    {"type": "press_key", "selector": "#input-id", "key": "Enter"},
-    {"type": "submit", "selector": "#form-id"},
-    {"type": "scroll", "direction": "down"},
-    {"type": "extract", "selector": ".content", "description": "what to extract"},
-    {"type": "analyze_page", "focus": "search form", "question": "what selector should I use for the search button?"},
-    {"type": "wait", "seconds": 2},
-    {"type": "complete", "message": "task completed successfully"}
-  ]
-}
-
-when selectors fail or you're unsure about page structure, use analyze_page to get relevant HTML and determine correct selectors.`
-        },
-        {
-          role: 'user',
-          content: instruction
-        }
-      ],
-      max_completion_tokens: 1500
-    }; // create request body
-
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${result.openai_api_key}`
-      },
-      body: JSON.stringify(requestBody)
-    }); // make api request
-
-    if (!response.ok) { // check if request failed
-      const errorText = await response.text(); // get error details
-      throw new Error(`openai api error: ${response.status} - ${errorText}`); // throw error
-    }
-
-    const data = await response.json(); // parse response
-    const aiResponse = data.choices[0].message.content; // get ai response
-
-    // check if response is empty or null
-    if (!aiResponse || aiResponse.trim() === '') { // check for empty response
-      throw new Error('received empty response from ai'); // throw error
-    }
-
-    // parse ai response as json
-    let actions;
-    try {
-      const parsed = JSON.parse(aiResponse); // parse json response
-      actions = parsed.actions; // get actions array
-      
-      // validate actions array exists and is not empty
-      if (!actions || !Array.isArray(actions) || actions.length === 0) { // check for valid actions
-        throw new Error('no valid actions found in response'); // throw error
-      }
-    } catch (e) {
-      throw new Error('invalid response format from ai'); // throw error
-    }
+    // get or create assistant with persistent tools and instructions
+    const assistantId = await getOrCreateAssistant(result.openai_api_key); // get persistent assistant
+    
+    // create thread and run assistant
+    const actions = await runAssistantTask(assistantId, currentTitle, instruction, result.openai_api_key); // run task with assistant
 
     // execute actions
     currentActions = actions; // store actions for pause/resume
@@ -394,6 +315,226 @@ async function trackNavigationInDataCollection(url) {
   } catch (error) {
     console.log('error tracking navigation:', error.message); // log error
   }
+}
+
+async function getOrCreateAssistant(apiKey) {
+  // check if assistant id is stored
+  const result = await new Promise((resolve) => {
+    chrome.storage.local.get(['assistant_id'], resolve); // get stored assistant id
+  });
+  
+  if (result.assistant_id) { // check if assistant exists
+    return result.assistant_id; // return existing assistant id
+  }
+  
+  // create new assistant with persistent tools and instructions
+  const assistantResponse = await fetch('https://api.openai.com/v1/assistants', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${apiKey}`,
+      'OpenAI-Beta': 'assistants=v2'
+    },
+    body: JSON.stringify({
+      name: "Web Automation Assistant",
+      instructions: `you are an ai assistant that helps users navigate and interact with websites.
+
+important: when filling out search forms or inputs, always follow up with submitting the form. use these strategies in order of preference:
+1. press enter key on the input field (most reliable)
+2. click the submit/search button if enter doesn't work
+3. submit the parent form element
+
+if you cannot find the right selectors or actions fail, use the "analyze_page" action to get page structure and ask for guidance.`,
+      model: "gpt-4o",
+      tools: [
+        {
+          type: "function",
+          function: {
+            name: "web_automation_actions",
+            description: "execute a sequence of web automation actions to complete the user's task",
+            parameters: {
+              type: "object",
+              properties: {
+                actions: {
+                  type: "array",
+                  description: "array of actions to perform in sequence",
+                  items: {
+                    type: "object",
+                    properties: {
+                      type: {
+                        type: "string",
+                        enum: ["navigate", "click", "type", "press_key", "submit", "scroll", "extract", "analyze_page", "wait", "complete"],
+                        description: "type of action to perform"
+                      },
+                      url: { type: "string", description: "url to navigate to (for navigate action)" },
+                      selector: { type: "string", description: "css selector for the target element" },
+                      text: { type: "string", description: "text to type into an input field" },
+                      key: { type: "string", description: "key to press (e.g., 'Enter', 'Tab')" },
+                      direction: { type: "string", enum: ["up", "down"], description: "scroll direction" },
+                      seconds: { type: "number", description: "number of seconds to wait" },
+                      message: { type: "string", description: "completion message for complete action" },
+                      focus: { type: "string", description: "focus area for page analysis" },
+                      question: { type: "string", description: "specific question for page analysis" },
+                      description: { type: "string", description: "description of what to extract" }
+                    },
+                    required: ["type"],
+                    additionalProperties: false
+                  }
+                }
+              },
+              required: ["actions"],
+              additionalProperties: false
+            }
+          }
+        }
+      ]
+    })
+  });
+  
+  if (!assistantResponse.ok) { // check if assistant creation failed
+    throw new Error(`failed to create assistant: ${assistantResponse.status}`); // throw error
+  }
+  
+  const assistant = await assistantResponse.json(); // parse assistant response
+  
+  // store assistant id for reuse
+  await new Promise((resolve) => {
+    chrome.storage.local.set({'assistant_id': assistant.id}, resolve); // save assistant id
+  });
+  
+  return assistant.id; // return new assistant id
+}
+
+async function runAssistantTask(assistantId, currentTitle, instruction, apiKey) {
+  // create thread
+  const threadResponse = await fetch('https://api.openai.com/v1/threads', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${apiKey}`,
+      'OpenAI-Beta': 'assistants=v2'
+    },
+    body: JSON.stringify({})
+  });
+  
+  if (!threadResponse.ok) { // check if thread creation failed
+    throw new Error(`failed to create thread: ${threadResponse.status}`); // throw error
+  }
+  
+  const thread = await threadResponse.json(); // parse thread response
+  
+  // add message to thread
+  const messageResponse = await fetch(`https://api.openai.com/v1/threads/${thread.id}/messages`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${apiKey}`,
+      'OpenAI-Beta': 'assistants=v2'
+    },
+    body: JSON.stringify({
+      role: "user",
+      content: `current page: ${currentTitle}\n\nuser instruction: ${instruction}`
+    })
+  });
+  
+  if (!messageResponse.ok) { // check if message creation failed
+    throw new Error(`failed to add message: ${messageResponse.status}`); // throw error
+  }
+  
+  // run assistant
+  const runResponse = await fetch(`https://api.openai.com/v1/threads/${thread.id}/runs`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${apiKey}`,
+      'OpenAI-Beta': 'assistants=v2'
+    },
+    body: JSON.stringify({
+      assistant_id: assistantId
+    })
+  });
+  
+  if (!runResponse.ok) { // check if run creation failed
+    throw new Error(`failed to run assistant: ${runResponse.status}`); // throw error
+  }
+  
+  const run = await runResponse.json(); // parse run response
+  
+  // wait for completion and get result
+  return await waitForRunCompletion(thread.id, run.id, apiKey); // wait for completion
+}
+
+async function waitForRunCompletion(threadId, runId, apiKey) {
+  let attempts = 0; // initialize attempts counter
+  const maxAttempts = 30; // maximum attempts
+  
+  while (attempts < maxAttempts) { // loop until completion or max attempts
+    const runResponse = await fetch(`https://api.openai.com/v1/threads/${threadId}/runs/${runId}`, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'OpenAI-Beta': 'assistants=v2'
+      }
+    });
+    
+    if (!runResponse.ok) { // check if run status check failed
+      throw new Error(`failed to check run status: ${runResponse.status}`); // throw error
+    }
+    
+    const run = await runResponse.json(); // parse run response
+    
+    if (run.status === 'completed') { // check if run completed
+      // get messages from thread
+      const messagesResponse = await fetch(`https://api.openai.com/v1/threads/${threadId}/messages`, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          'OpenAI-Beta': 'assistants=v2'
+        }
+      });
+      
+      if (!messagesResponse.ok) { // check if messages retrieval failed
+        throw new Error(`failed to get messages: ${messagesResponse.status}`); // throw error
+      }
+      
+      const messages = await messagesResponse.json(); // parse messages response
+      const lastMessage = messages.data[0]; // get latest message
+      
+      // extract function call from message
+      if (lastMessage.content[0].type === 'text') { // check if text content
+        // look for tool calls in run steps
+        const stepsResponse = await fetch(`https://api.openai.com/v1/threads/${threadId}/runs/${runId}/steps`, {
+          method: 'GET',
+          headers: {
+            'Authorization': `Bearer ${apiKey}`,
+            'OpenAI-Beta': 'assistants=v2'
+          }
+        });
+        
+        if (stepsResponse.ok) { // check if steps retrieval succeeded
+          const steps = await stepsResponse.json(); // parse steps response
+          const toolStep = steps.data.find(step => step.type === 'tool_calls'); // find tool call step
+          
+          if (toolStep && toolStep.step_details.tool_calls[0]) { // check if tool call found
+            const toolCall = toolStep.step_details.tool_calls[0]; // get tool call
+            if (toolCall.function.name === 'web_automation_actions') { // check function name
+              const functionArgs = JSON.parse(toolCall.function.arguments); // parse arguments
+              return functionArgs.actions; // return actions
+            }
+          }
+        }
+      }
+      
+      throw new Error('no valid function call found in assistant response'); // throw error
+    } else if (run.status === 'failed') { // check if run failed
+      throw new Error(`assistant run failed: ${run.last_error?.message || 'unknown error'}`); // throw error
+    }
+    
+    attempts++; // increment attempts
+    await new Promise(resolve => setTimeout(resolve, 1000)); // wait 1 second before retry
+  }
+  
+  throw new Error('assistant run timed out'); // throw timeout error
 }
 
 async function waitForPageLoadAndReinject(tabId) {

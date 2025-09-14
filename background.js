@@ -60,41 +60,37 @@ async function startTask(instruction, taskId) {
     const dataTabId = taskData ? taskData.dataTabId : null; // get data tab id
 
     // get current tab info using chrome tabs api
-    const tabs = await chrome.tabs.query({active: true, currentWindow: true}); // get active tabs
-    let workingTab = tabs[0]; // get first tab
     
-    // if current tab is data collection tab, create new working tab using chrome tabs api
-    if (workingTab.id === dataTabId) { // check if current tab is data tab
-      workingTab = await chrome.tabs.create({url: 'about:blank'}); // create new working tab
-      await chrome.tabs.update(workingTab.id, {active: true}); // make it active
+    const apiKey = result.openai_api_key; // get api key
+    
+    // get current tab info
+    const tabs = await chrome.tabs.query({active: true, currentWindow: true}); // get active tab
+    const currentTab = tabs[0]; // get first tab
+    const currentTitle = currentTab.title || 'Unknown Page'; // get tab title
+    
+    console.log('starting task with instruction:', instruction); // log task start
+    
+    // try gpt-5 chat completion first, fallback to assistants api
+    let result2;
+    try {
+      console.log('attempting gpt-5 chat completion...'); // log gpt-5 attempt
+      result2 = await runGPT5ChatCompletion(currentTitle, instruction, apiKey); // try gpt-5 first
+    } catch (gpt5Error) {
+      console.log('gpt-5 failed, falling back to assistants api:', gpt5Error.message); // log fallback
+      // fallback to assistants api with gpt-4o
+      const assistantId = await getOrCreateAssistant(apiKey); // get or create assistant
+      result2 = await runAssistantTask(assistantId, currentTitle, instruction, apiKey); // run task
     }
     
-    // store working tab id in task data using chrome storage api
-    if (taskData) { // check if task data exists
-      taskData.workingTabId = workingTab.id; // store working tab id
-      await new Promise((resolve) => {
-        chrome.storage.local.set({[`task_data_${taskId}`]: taskData}, resolve); // save updated data
-      });
+    if (result2 && result2.actions) { // check if actions exist
+      await executeActionsFromIndex(result2.actions, 0); // execute actions
+    } else {
+      throw new Error('no actions returned from ai model'); // throw error if no actions
     }
-    
-    const currentUrl = workingTab.url; // get current tab url
-    const currentTitle = workingTab.title; // get current tab title
-    
-    // get or create assistant with persistent tools and instructions
-    const assistantId = await getOrCreateAssistant(result.openai_api_key); // get persistent assistant
-    
-    // create thread and run assistant
-    const actions = await runAssistantTask(assistantId, currentTitle, instruction, result.openai_api_key); // run task with assistant
-
-    // execute actions
-    currentActions = actions; // store actions for pause/resume
-    currentActionIndex = 0; // reset action index
-    await executeActions(actions); // execute actions
-
   } catch (error) {
     console.error('task execution error:', error); // log error
-    notifyPopup('TASK_ERROR', {error: error.message}); // notify popup
-    currentTask = null; // clear task
+    notifyPopup('TASK_FAILED', {error: error.message}); // notify popup of failure
+    currentTask = null; // clear current task
   }
 }
 
@@ -354,7 +350,89 @@ Current capabilities:
 - Complete tasks
 
 Always respond with a structured list of actions in the specified JSON format. Be precise with selectors and provide clear, actionable steps.`,
-      model: "gpt-5",
+      model: "gpt-4o",
+    tools: [
+      {
+        type: "function",
+        function: {
+          name: "web_automation_actions",
+          description: "execute a sequence of web automation actions to complete the user's task",
+          parameters: {
+            type: "object",
+            properties: {
+              actions: {
+                type: "array",
+                description: "array of actions to perform in sequence",
+                items: {
+                  type: "object",
+                  properties: {
+                    type: {
+                      type: "string",
+                      enum: ["navigate", "click", "type", "press_key", "submit", "scroll", "extract", "analyze_page", "wait", "complete"],
+                      description: "type of action to perform"
+                    },
+                    url: { type: "string", description: "url to navigate to (for navigate action)" },
+                    selector: { type: "string", description: "css selector for the target element" },
+                    text: { type: "string", description: "text to type into an input field" },
+                    key: { type: "string", description: "key to press (e.g., 'Enter', 'Tab')" },
+                    direction: { type: "string", enum: ["up", "down"], description: "scroll direction" },
+                    seconds: { type: "number", description: "number of seconds to wait" },
+                    message: { type: "string", description: "completion message for complete action" },
+                    focus: { type: "string", description: "focus area for page analysis" },
+                    question: { type: "string", description: "specific question for page analysis" },
+                    description: { type: "string", description: "description of what to extract" }
+                  },
+                  required: ["type"],
+                  additionalProperties: false
+                }
+              }
+            },
+            required: ["actions"],
+            additionalProperties: false
+          }
+        }
+      }
+    ]
+  })
+});
+
+// ... (rest of the code remains the same)
+
+async function runGPT5ChatCompletion(currentTitle, instruction, apiKey) {
+  console.log('running gpt-5 chat completion...'); // log gpt-5 start
+  
+  const response = await fetch('https://api.openai.com/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${apiKey}`
+    },
+    body: JSON.stringify({
+      model: 'gpt-5',
+      messages: [
+        {
+          role: 'system',
+          content: `You are a web automation assistant that helps users navigate and interact with web pages. You analyze the current page and provide structured actions to accomplish user goals.
+
+Current capabilities:
+- Navigate to URLs
+- Click on elements (buttons, links, etc.)
+- Type text into input fields
+- Press keys (Enter, Tab, etc.)
+- Submit forms
+- Scroll pages
+- Extract information from pages
+- Analyze page content
+- Wait for page loads
+- Complete tasks
+
+Always respond with a structured list of actions in the specified JSON format. Be precise with selectors and provide clear, actionable steps.`
+        },
+        {
+          role: 'user',
+          content: `Current page: ${currentTitle}\n\nUser instruction: ${instruction}`
+        }
+      ],
       tools: [
         {
           type: "function",
@@ -375,16 +453,39 @@ Always respond with a structured list of actions in the specified JSON format. B
                         enum: ["navigate", "click", "type", "press_key", "submit", "scroll", "extract", "analyze_page", "wait", "complete"],
                         description: "type of action to perform"
                       },
-                      url: { type: "string", description: "url to navigate to (for navigate action)" },
-                      selector: { type: "string", description: "css selector for the target element" },
-                      text: { type: "string", description: "text to type into an input field" },
-                      key: { type: "string", description: "key to press (e.g., 'Enter', 'Tab')" },
-                      direction: { type: "string", enum: ["up", "down"], description: "scroll direction" },
-                      seconds: { type: "number", description: "number of seconds to wait" },
-                      message: { type: "string", description: "completion message for complete action" },
-                      focus: { type: "string", description: "focus area for page analysis" },
-                      question: { type: "string", description: "specific question for page analysis" },
-                      description: { type: "string", description: "description of what to extract" }
+                      url: {
+                        type: "string",
+                        description: "url to navigate to (for navigate action)"
+                      },
+                      selector: {
+                        type: "string", 
+                        description: "css selector for element to interact with"
+                      },
+                      text: {
+                        type: "string",
+                        description: "text to type or extract"
+                      },
+                      key: {
+                        type: "string",
+                        description: "key to press (for press_key action)"
+                      },
+                      direction: {
+                        type: "string",
+                        enum: ["up", "down", "left", "right"],
+                        description: "scroll direction"
+                      },
+                      pixels: {
+                        type: "number",
+                        description: "number of pixels to scroll"
+                      },
+                      duration: {
+                        type: "number",
+                        description: "wait duration in milliseconds"
+                      },
+                      message: {
+                        type: "string",
+                        description: "completion message or analysis result"
+                      }
                     },
                     required: ["type"],
                     additionalProperties: false
@@ -396,25 +497,34 @@ Always respond with a structured list of actions in the specified JSON format. B
             }
           }
         }
-      ]
+      ],
+      tool_choice: { type: "function", function: { name: "web_automation_actions" } }
     })
   });
-  
-  if (!assistantResponse.ok) { // check if assistant creation failed
-    const errorText = await assistantResponse.text(); // get error details
-    console.error('assistant creation failed:', assistantResponse.status, errorText); // log error
-    throw new Error(`failed to create assistant: ${assistantResponse.status} - ${errorText}`); // throw error
+
+  if (!response.ok) { // check if response failed
+    const errorText = await response.text(); // get error details
+    console.error('gpt-5 chat completion failed:', response.status, errorText); // log error
+    throw new Error(`gpt-5 chat completion failed: ${response.status} - ${errorText}`); // throw error
   }
   
-  const assistant = await assistantResponse.json(); // parse assistant response
-  console.log('assistant created successfully:', assistant.id); // log success
+  const result = await response.json(); // parse response
+  console.log('gpt-5 response:', JSON.stringify(result, null, 2)); // log response
   
-  // store assistant id for reuse
-  await new Promise((resolve) => {
-    chrome.storage.local.set({'assistant_id': assistant.id}, resolve); // save assistant id
-  });
+  if (result.choices && result.choices[0] && result.choices[0].message && result.choices[0].message.tool_calls) { // check for tool calls
+    const toolCall = result.choices[0].message.tool_calls[0]; // get first tool call
+    if (toolCall.type === 'function') { // check if function call
+      console.log('gpt-5 function call:', toolCall.function.name, toolCall.function.arguments); // log function call
+      try {
+        return JSON.parse(toolCall.function.arguments); // parse and return function arguments
+      } catch (e) {
+        console.error('failed to parse gpt-5 function arguments:', toolCall.function.arguments); // log parse error
+        throw new Error('failed to parse gpt-5 function call arguments as json'); // throw parse error
+      }
+    }
+  }
   
-  return assistant.id; // return new assistant id
+  throw new Error('no valid function call found in gpt-5 response'); // throw error
 }
 
 async function runAssistantTask(assistantId, currentTitle, instruction, apiKey) {
